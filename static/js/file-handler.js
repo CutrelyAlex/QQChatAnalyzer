@@ -64,6 +64,9 @@ async function loadFile() {
         document.getElementById('network-analyze-btn').disabled = false;
         document.getElementById('export-btn').disabled = false;
         
+        // 启用生成按钮
+        updateAIPanel();
+        
         // 加载预览筛选器
         await loadPreviewFilters();
         

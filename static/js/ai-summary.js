@@ -81,8 +81,8 @@ function showSummaryModal(show, loading = true) {
 function displaySummary(type, data) {
     const typeNames = {
         'personal': '📱 个人年度报告',
-        'group': '👥 群聊年度报告',
-        'network': '🕸️ 社交网络报告'
+        'group': '👥 群体 + 社交网络融合报告',
+        'network': '👥 群体 + 社交网络融合报告'
     };
     
     // 设置标题

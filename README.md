@@ -1,132 +1,132 @@
-# QQ Chat Record Analysis System
+# QQ 聊天记录分析系统
 
-A comprehensive web-based system for analyzing QQ chat records with support for personal analytics, group dynamics analysis, social network visualization, and AI-powered summaries.
+一个全面的网络应用系统，用于分析 QQ 聊天记录，支持个人分析、群体动态分析、社交网络可视化和 AI 驱动的摘要生成。
 
-## Features
+## 功能特性
 
-### Core Analysis Capabilities
+### 核心分析能力
 
-**Personal Analytics (个人分析)**
-- Individual user statistics including message count, activity patterns, and timeline distribution
-- Hourly activity heatmap by weekday
-- Vocabulary profile and communication preferences
-- Historical activity trends
+**个人分析**
+- 个人用户统计，包括消息数量、活动模式和时间分布
+- 按工作日的小时活跃度热力图
+- 词汇档案和沟通偏好
+- 历史活动趋势
 
-**Group Analytics (群体分析)**  
-- Aggregate statistics across all participants
-- Group activity metrics and participation distribution
-- Peak activity detection by time period
-- Hot words and frequent content analysis with example messages
-- Daily and hourly activity patterns
+**群体分析**
+- 所有参与者的聚合统计
+- 群体活动指标和参与度分布
+- 按时间段检测高峰活动
+- 热词和频繁内容分析，包含示例消息
+- 每日和每小时的活动模式
 
-**Social Network Analysis (社交网络)**
-- User interaction graph with connection strength visualization
-- Mention relationships between users
-- Community detection and influence ranking
-- Network statistics (clustering coefficient, density, degree distribution)
+**社交网络分析**
+- 用户交互图表，显示连接强度可视化
+- 用户之间的提及关系
+- 社区检测和影响力排名
+- 网络统计（聚类系数、密度、度数分布）
 
-**AI-Powered Summaries (AI总结)**
-- Creative narrative summaries of chat records using OpenAI API
-- Customizable AI provider configuration (supports OpenAI-compatible APIs)
-- Token estimation and data pruning for large conversations
-- Multiple summary styles (personal, group, network perspectives)
+**AI 驱动的摘要**
+- 使用 OpenAI API 生成创意的聊天记录摘要
+- 可自定义的 AI 提供商配置（支持 OpenAI 兼容的 API）
+- 代币估计和大型对话的数据裁剪
+- 多种摘要样式（个人、群体、网络视角）
 
-**Data Management**
-- Chat record preview with filtering (by date, participant, content)
-- Report export functionality
-- Pagination support for large datasets
-- Token counting and API cost estimation
+**数据管理**
+- 聊天记录预览，支持筛选（按日期、参与者、内容）
+- 报告导出功能
+- 大数据集的分页支持
+- 代币计数和 API 成本估计
 
-## Technical Stack
+## 技术栈
 
-### Backend
-- **Framework**: Flask 3.1.0
-- **Language**: Python 3.12+
-- **NLP**: jieba (Chinese word segmentation)
-- **Visualization**: matplotlib, wordcloud
-- **AI Integration**: OpenAI API (compatible with aihubmix.com, other OpenAI-compatible providers)
+### 后端
+- **框架**：Flask 3.1.0
+- **语言**：Python 3.12+
+- **自然语言处理**：jieba（中文分词）
+- **可视化**：matplotlib、wordcloud
+- **AI 集成**：OpenAI API（兼容 aihubmix.com 和其他 OpenAI 兼容提供商）
 
-### Frontend
-- **Architecture**: Modular JavaScript
-- **UI Components**: Tabbed interface with modal dialogs
-- **Visualization**: Chart.js-based heatmaps and statistics
-- **Communication**: Fetch API for REST endpoints
+### 前端
+- **架构**：模块化 JavaScript
+- **UI 组件**：选项卡式界面，带模态对话框
+- **可视化**：基于 Chart.js 的热力图和统计图表
+- **通信**：使用 Fetch API 的 REST 端点
 
-### Dependencies
-- Flask 3.1.0 - Web framework
-- flask-cors 4.0.0 - Cross-origin support
-- python-dotenv 1.0.1 - Environment configuration
-- jieba 0.42.1 - Chinese text segmentation
-- openai 1.61.0 - AI integration
-- wordcloud 1.9.4 - Word cloud generation
-- matplotlib 3.10.0 - Plotting library
-- numpy 1.26.3 - Numerical computing
+### 依赖项
+- Flask 3.1.0 - Web 框架
+- flask-cors 4.0.0 - 跨源支持
+- python-dotenv 1.0.1 - 环境配置
+- jieba 0.42.1 - 中文文本分词
+- openai 1.61.0 - AI 集成
+- wordcloud 1.9.4 - 词云生成
+- matplotlib 3.10.0 - 绘图库
+- numpy 1.26.3 - 数值计算
 
-## Installation
+## 安装
 
-### System Requirements
-- Python 3.12 or higher
-- pip package manager
-- 512 MB minimum RAM
-- Windows, macOS, or Linux
+### 系统要求
+- Python 3.12 或更高版本
+- pip 包管理器
+- 最少 512 MB RAM
+- Windows、macOS 或 Linux
 
-### Setup Steps
+### 安装步骤
 
-1. Clone or download the project:
+1. 克隆或下载项目：
 ```bash
 cd Ciyun
 ```
 
-2. Create virtual environment (recommended):
+2. 创建虚拟环境（推荐）：
 ```bash
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate  # 在 Windows 上：venv\Scripts\activate
 ```
 
-3. Install dependencies:
+3. 安装依赖项：
 ```bash
 python -m pip install -r requirements.txt
 ```
 
-4. Configure environment variables:
+4. 配置环境变量：
 ```bash
-cp .env.example .env  # If available
-# Edit .env file with your settings
+cp .env.example .env  # 如果可用
+# 使用你的设置编辑 .env 文件
 ```
 
-5. Create required directories:
+5. 创建所需的目录：
 ```bash
 mkdir -p texts uploads exports
 ```
 
-6. Run the application:
+6. 运行应用程序：
 ```bash
 python app.py
 ```
 
-The application will start on `http://127.0.0.1:5002` by default.
+应用程序将在默认地址 `http://127.0.0.1:5002` 上启动。
 
-## Configuration
+## 配置
 
-### Environment Variables
+### 环境变量
 
-**Flask Configuration**
-- `FLASK_DEBUG` - Enable debug mode (default: False)
-- `FLASK_HOST` - Bind address (default: 127.0.0.1)
-- `FLASK_PORT` - Port number (default: 5000)
+**Flask 配置**
+- `FLASK_DEBUG` - 启用调试模式（默认值：False）
+- `FLASK_HOST` - 绑定地址（默认值：127.0.0.1）
+- `FLASK_PORT` - 端口号（默认值：5000）
 
-**AI Configuration**
-- `OPENAI_API_KEY` - Required for AI summary features
-- `OPENAI_API_BASE` - API endpoint (default: https://api.openai.com/v1)
-- `OPENAI_MODEL` - Model selection (default: gpt-3.5-turbo)
-- `OPENAI_REQUEST_TIMEOUT` - Request timeout in seconds (default: 30)
+**AI 配置**
+- `OPENAI_API_KEY` - AI 摘要功能所需
+- `OPENAI_API_BASE` - API 端点（默认值：https://api.openai.com/v1）
+- `OPENAI_MODEL` - 模型选择（默认值：gpt-3.5-turbo）
+- `OPENAI_REQUEST_TIMEOUT` - 请求超时（秒）（默认值：30）
 
-**Data Processing**
-- `MAX_FILE_SIZE_MB` - Maximum file upload size (default: 100)
-- `MAX_MEMBERS` - Maximum users per analysis (default: 5000)
-- `MAX_TOKENS` - Maximum AI token limit (default: 500000)
+**数据处理**
+- `MAX_FILE_SIZE_MB` - 最大文件上传大小（默认值：100）
+- `MAX_MEMBERS` - 每个分析的最大用户数（默认值：5000）
+- `MAX_TOKENS` - 最大 AI 代币限制（默认值：500000）
 
-Example `.env` file:
+示例 `.env` 文件：
 ```
 FLASK_DEBUG=True
 OPENAI_API_KEY=your_api_key_here
@@ -135,191 +135,193 @@ OPENAI_MODEL=gpt-4o-mini
 OPENAI_REQUEST_TIMEOUT=30
 ```
 
-## Chat Record Format
+## 聊天记录格式
 
-The system processes text files with the following QQ chat record format:
+系统处理具有以下 QQ 聊天记录格式的文本文件：
 
 ```
-YYYY-MM-DD HH:MM:SS Sender_Name(QQ_Number)
-message content (can span multiple lines)
-YYYY-MM-DD HH:MM:SS Next_Sender(QQ_Number)
-next message content
+YYYY-MM-DD HH:MM:SS 发送者名称(QQ_号码)
+消息内容（可以跨多行）
+YYYY-MM-DD HH:MM:SS 下一个发送者(QQ_号码)
+下一条消息内容
 ```
 
-Example:
+示例：
 ```
 2025-05-10 14:30:45 Alice(12345678)
-Hello everyone!
+大家好！
 2025-05-10 14:31:20 Bob(87654321)
-Hi Alice, how are you?
+Hi Alice，你好吗？
 ```
 
-Place chat files in the `texts/` directory with `.txt` extension.
+将聊天文件放在 `texts/` 目录中，扩展名为 `.txt`。
 
-## API Endpoints
+## API 端点
 
-### File Management
-- `GET /api/files` - List available chat record files
-- `POST /api/load` - Load file for analysis
-- `GET /api/preview/<filename>` - Preview chat records with pagination
-- `GET /api/preview/<filename>/stats` - Get statistics for filtering
+### 文件管理
+- `GET /api/files` - 列出可用的聊天记录文件
+- `POST /api/load` - 加载要分析的文件
+- `GET /api/preview/<filename>` - 预览聊天记录（支持分页）
+- `GET /api/preview/<filename>/stats` - 获取筛选统计信息
 
-### Analysis APIs
-- `GET /api/personal/<qq>` - Get personal statistics for QQ number
-- `GET /api/personal/list/<filename>` - List all users in file
-- `GET /api/group` - Get group-wide statistics
-- `GET /api/network` - Get social network analysis
+### 分析 API
+- `GET /api/personal/<qq>` - 获取 QQ 号的个人统计信息
+- `GET /api/personal/list/<filename>` - 列出文件中的所有用户
+- `GET /api/group` - 获取群体范围的统计信息
+- `GET /api/network` - 获取社交网络分析
 
-### AI Features
-- `GET /api/ai/status` - Check AI service availability
-- `POST /api/test-ai-connection` - Test AI API configuration
-- `POST /api/ai/token-estimate` - Estimate tokens for data pruning
-- `POST /api/ai/summary` - Generate AI summary
+### AI 功能
+- `GET /api/ai/status` - 检查 AI 服务可用性
+- `POST /api/test-ai-connection` - 测试 AI API 配置
+- `POST /api/ai/token-estimate` - 估计数据裁剪的代币数
+- `POST /api/ai/summary` - 生成 AI 摘要
 
-### Data Export
-- `POST /api/export` - Export analysis report
+### 数据导出
+- `POST /api/export` - 导出分析报告
 
-## Project Structure
+## 项目结构
 
 ```
 Ciyun/
-├── app.py                 # Flask application entry point
-├── requirements.txt       # Python dependencies
-├── .env                   # Environment configuration
-├── README.md             # This file
+├── app.py                 # Flask 应用程序入口
+├── requirements.txt       # Python 依赖项
+├── .env                   # 环境配置
+├── README.md             # 本文件
 │
 ├── src/
-│   ├── config.py         # Configuration management
-│   ├── utils.py          # Shared utility functions
-│   ├── LineProcess.py    # Chat record parsing
-│   ├── CutWords.py       # Word tokenization
-│   ├── personal_analyzer.py     # Individual user analysis
-│   ├── group_analyzer.py        # Group statistics
-│   ├── network_analyzer.py      # Network analysis
-│   ├── ai_summarizer.py         # AI summary generation
-│   ├── data_pruner.py           # Token management
-│   └── WordCloudMaker.py        # Visualization
+│   ├── config.py         # 配置管理
+│   ├── utils.py          # 共享工具函数
+│   ├── LineProcess.py    # 聊天记录解析
+│   ├── CutWords.py       # 词分词
+│   ├── personal_analyzer.py     # 个人用户分析
+│   ├── group_analyzer.py        # 群体统计
+│   ├── network_analyzer.py      # 网络分析
+│   ├── ai_summarizer.py         # AI 摘要生成
+│   ├── data_pruner.py           # 代币管理
+│   └── WordCloudMaker.py        # 可视化
 │
 ├── templates/
-│   └── index.html        # Main UI template
+│   └── index.html        # 主 UI 模板
 │
 ├── static/
 │   ├── css/
-│   │   └── style.css     # Stylesheet
+│   │   └── style.css     # 样式表
 │   └── js/
-│       ├── core.js       # Core functionality
-│       ├── file-handler.js       # File operations
-│       ├── analyzer.js   # Analysis interface
-│       ├── ai-summary.js # AI integration
-│       ├── ui.js         # UI components
-│       ├── network.js    # Network visualization
-│       ├── hotwords.js   # Word frequency display
-│       └── config.js     # Configuration management
+│       ├── core.js       # 核心功能
+│       ├── file-handler.js       # 文件操作
+│       ├── analyzer.js   # 分析接口
+│       ├── ai-summary.js # AI 集成
+│       ├── ui.js         # UI 组件
+│       ├── network.js    # 网络可视化
+│       ├── hotwords.js   # 词频显示
+│       └── config.js     # 配置管理
 │
-├── texts/                # Input chat record files
-├── uploads/              # Temporary upload storage
-└── exports/              # Generated report files
+├── texts/                # 输入聊天记录文件
+├── uploads/              # 临时上传存储
+└── exports/              # 生成的报告文件
 ```
 
-## Usage Workflow
+## 使用工作流
 
-### Basic Analysis
-1. Navigate to web interface at http://127.0.0.1:5002
-2. Upload or select chat record file from `texts/` directory
-3. Select analysis type (Personal/Group/Network)
-4. Enter participant QQ number (for personal analysis)
-5. View results in respective tabs
+### 基本分析
+1. 在 http://127.0.0.1:5002 处导航到 Web 界面
+2. 从 `texts/` 目录上传或选择聊天记录文件
+3. 选择分析类型（个人/群体/网络）
+4. 输入参与者 QQ 号（用于个人分析）
+5. 在相应选项卡中查看结果
 
-### AI Summary Generation
-1. Configure AI API settings in "AI总结" tab
-   - Input API key and base URL
-   - Click "测试连接" to verify configuration
-2. Select summary target (Personal/Group/Network)
-3. Click "生成AI总结" button
-4. Review generated summary in modal dialog
+### AI 摘要生成
+1. 在"AI总结"选项卡中配置 AI API 设置
+   - 输入 API 密钥和基础 URL
+   - 点击"测试连接"验证配置
+2. 选择摘要目标（个人/群体/网络）
+3. 点击"生成AI总结"按钮
+4. 在模态对话框中查看生成的摘要
 
-### Data Preview
-1. Use Preview tab to browse chat records
-2. Filter by date range or participant
-3. Pagination controls for large datasets
-4. Example messages for identified topics
+### 数据预览
+1. 使用预览选项卡浏览聊天记录
+2. 按日期范围或参与者筛选
+3. 大数据集的分页控制
+4. 已识别主题的示例消息
 
-## Performance Considerations
+## 性能考虑
 
-- Large files (>100MB) may require extended processing time
-- Token estimation applies before AI summary generation
-- Data pruning uses multiple strategies (uniform, temporal, frequency-based)
-- Network analysis O(n²) complexity; optimal for <10,000 participants
+- 大文件（>100MB）可能需要较长的处理时间
+- AI 摘要生成前应用代币估计
+- 数据裁剪使用多种策略（均匀、时间、基于频率）
+- 网络分析 O(n²) 复杂度；最适合 <10,000 参与者
 
-## Troubleshooting
+## 故障排除
 
-### AI Service Unavailable
-- Verify `OPENAI_API_KEY` environment variable is set
-- Test connection using "测试连接" button
-- Check network connectivity to API endpoint
-- Verify API base URL and model name
+### AI 服务不可用
+- 验证是否设置了 `OPENAI_API_KEY` 环境变量
+- 使用"测试连接"按钮测试连接
+- 检查到 API 端点的网络连接
+- 验证 API 基础 URL 和模型名称
 
-### Parse Errors
-- Ensure chat record format matches specification
-- Check file encoding is UTF-8
-- Verify QQ numbers are numeric (no special characters)
+### 解析错误
+- 确保聊天记录格式与规范相匹配
+- 检查文件编码是否为 UTF-8
+- 验证 QQ 号为数字（不含特殊字符）
 
-### Out of Memory
-- Reduce file size or process in smaller batches
-- Increase system RAM or adjust `MAX_RECORDS_PER_LOAD`
-- Use data pruning for AI operations
+### 内存不足
+- 减少文件大小或分小批处理
+- 增加系统 RAM 或调整 `MAX_RECORDS_PER_LOAD`
+- 对 AI 操作使用数据裁剪
 
-### Performance Issues
-- Disable debug mode in production (`FLASK_DEBUG=False`)
-- Use production WSGI server (gunicorn, waitress)
-- Implement caching for repeated analyses
+### 性能问题
+- 在生产环境中禁用调试模式（`FLASK_DEBUG=False`）
+- 使用生产 WSGI 服务器（gunicorn、waitress）
+- 为重复分析实现缓存
 
-## Development
+## 开发
 
-### Running Tests
+### 运行测试
 ```bash
 python test_analyzers.py
 ```
 
-### Code Style
-- Python files follow PEP 8 conventions
-- JavaScript uses modular pattern with namespacing
-- Comments in English for documentation
-- HTML5 semantic markup
+### 代码风格
+- Python 文件遵循 PEP 8 规范
+- JavaScript 使用带命名空间的模块化模式
+- 文档中的注释使用英文
+- HTML5 语义标记
 
-### Adding New Analysis
-1. Create analyzer class in `src/` inheriting from base pattern
-2. Implement `analyze()` method returning standardized dict
-3. Add API endpoint in `app.py`
-4. Create corresponding frontend module in `static/js/`
+### 添加新分析
+1. 在 `src/` 中创建继承自基础模式的分析器类
+2. 实现返回标准化字典的 `analyze()` 方法
+3. 在 `app.py` 中添加 API 端点
+4. 在 `static/js/` 中创建对应的前端模块
 
-## License
+## 许可证
 
-Proprietary - This project is provided as-is for specific use case.
+专有版权 - 本项目按原样提供，用于特定用例。
 
-## Support
+## 支持
 
-For issues or questions regarding functionality, refer to code comments and inline documentation. The system is optimized for Chinese text analysis but supports multilingual chat records.
+如有关于功能的问题或疑问，请参考代码注释和内联文档。该系统针对中文文本分析进行了优化，但也支持多语言聊天记录。
 
-## Version History
+## 版本历史
 
-- v1.0.0 - Initial stable release
-  - Personal, group, network analysis
-  - AI summary integration
-  - Web-based UI with tabbed interface
-  - Export and preview functionality
+- v1.0.0 - 初始稳定版本
+  - 个人、群体、网络分析
+  - AI 摘要集成
+  - 具有选项卡式界面的 Web 应用
+  - 导出和预览功能
 
-## Technical Specifications
+## 技术规范
 
-**Supported Input Size**: 1 MB - 100 MB (configurable)
-**Supported Participants**: Up to 5000 unique users
-**Max Token Context**: 500000 tokens for AI operations
-**API Response Time**: <5 seconds for typical analysis
-**Concurrent Users**: Single-threaded (recommended reverse proxy for scaling)
+**支持的输入大小**：1 MB - 100 MB（可配置）
+**支持的参与者**：最多 5000 个唯一用户
+**最大代币上下文**：500000 代币用于 AI 操作
+**API 响应时间**：典型分析 <5 秒
+**并发用户**：单线程（建议使用反向代理进行扩展）
 
-## Notes
+## 注意事项
 
-- The system is optimized for QQ chat record analysis but can be adapted for other chat formats
-- AI features require valid OpenAI API credentials
-- Data is processed locally; files are not transmitted to external services except AI API
-- Word cloud generation requires sufficient vocabulary (minimum 50 words recommended)
+- 该系统针对 QQ 聊天记录分析进行了优化，但可以适配其他聊天格式
+- AI 功能需要有效的 OpenAI API 凭证
+- 数据在本地处理；除了 AI API 外，文件不会传输到外部服务
+- 词云生成需要足够的词汇量（建议最少 50 个单词）
+
+````

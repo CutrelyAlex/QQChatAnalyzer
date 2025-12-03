@@ -131,8 +131,17 @@ async function checkAIStatus() {
 
 
 function updateAIPanel() {
-    const summaryButtons = document.querySelectorAll('[id$="-summary-btn"]');
-    summaryButtons.forEach(btn => btn.disabled = !appState.currentFile);
+    const generateBtn = document.getElementById('generate-summary-btn');
+    const hasFile = !!appState.currentFile;
+    
+    if (generateBtn) {
+        generateBtn.disabled = !hasFile;
+        if (hasFile) {
+            generateBtn.title = '点击生成AI总结';
+        } else {
+            generateBtn.title = '请先加载文件';
+        }
+    }
 }
 
 // ============ 工具函数 ============

@@ -393,3 +393,245 @@ window.saveConfig = saveConfig;
 window.resetConfig = resetConfig;
 window.testConnection = testConnection;
 window.aiConfig = aiConfig;
+
+// ============ AI总结生成流程 ============
+
+let generationController = null;
+let generationStartTime = null;
+
+function initializeSummaryGeneration() {
+    const generateBtn = document.getElementById('generate-summary-btn');
+    const targetSelect = document.getElementById('summary-target-select');
+    const cancelBtn = document.getElementById('cancel-generation-btn');
+    const copyBtn = document.getElementById('copy-summary-btn');
+    const newGenBtn = document.getElementById('new-generation-btn');
+    const retryBtn = document.getElementById('retry-generation-btn');
+    const resetBtn = document.getElementById('reset-generation-btn');
+    
+    if (generateBtn) {
+        generateBtn.addEventListener('click', startSummaryGeneration);
+    }
+    
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', cancelGeneration);
+    }
+    
+    if (copyBtn) {
+        copyBtn.addEventListener('click', copySummaryContent);
+    }
+    
+    if (newGenBtn) {
+        newGenBtn.addEventListener('click', resetSummaryUI);
+    }
+    
+    if (retryBtn) {
+        retryBtn.addEventListener('click', startSummaryGeneration);
+    }
+    
+    if (resetBtn) {
+        resetBtn.addEventListener('click', resetSummaryUI);
+    }
+}
+
+function showProgressContainer() {
+    document.getElementById('generation-progress-container').style.display = 'block';
+    document.getElementById('generation-success-container').style.display = 'none';
+    document.getElementById('generation-error-container').style.display = 'none';
+    
+    // 重置日志
+    document.querySelector('.stream-log').innerHTML = '';
+    generationStartTime = Date.now();
+}
+
+function hideProgressContainer() {
+    document.getElementById('generation-progress-container').style.display = 'none';
+}
+
+function addStreamLog(message, type = 'info') {
+    const streamLog = document.querySelector('.stream-log');
+    const logItem = document.createElement('div');
+    logItem.className = `stream-log-item ${type}`;
+    logItem.textContent = message;
+    streamLog.appendChild(logItem);
+    
+    // 自动滚到底部
+    streamLog.parentElement.scrollTop = streamLog.parentElement.scrollHeight;
+}
+
+function updateProgressStep(stepText) {
+    const progressStep = document.getElementById('progress-step');
+    if (progressStep) {
+        progressStep.textContent = stepText;
+    }
+    
+    addStreamLog(stepText, 'info');
+}
+
+async function startSummaryGeneration() {
+    if (!aiConfig.enabled) {
+        showConfigStatus('❌ 请先启用AI功能', 'error');
+        return;
+    }
+    
+    if (!aiConfig.apiKey) {
+        showConfigStatus('❌ 请先配置API密钥', 'error');
+        return;
+    }
+    
+    if (!appState.currentFile) {
+        showConfigStatus('❌ 请先加载文件', 'error');
+        return;
+    }
+    
+    const targetType = document.getElementById('summary-target-select').value;
+    
+    try {
+        // 禁用生成按钮
+        const generateBtn = document.getElementById('generate-summary-btn');
+        generateBtn.disabled = true;
+        generateBtn.textContent = '⏳ 生成中...';
+        
+        // 创建AbortController用于取消
+        generationController = new AbortController();
+        
+        // 显示进度容器
+        showProgressContainer();
+        
+        // 初始化进度信息
+        updateProgressStep('正在初始化...');
+        
+        // 准备请求数据
+        updateProgressStep('准备数据...');
+        
+        const requestData = {
+            type: targetType,
+            filename: appState.currentFile,
+            max_tokens: aiConfig.tokenLimit,
+            ai_config: {
+                api_key: aiConfig.apiKey,
+                api_base: aiConfig.apiBase,
+                model: aiConfig.model
+            }
+        };
+        
+        // 如果是个人总结，检查QQ
+        if (targetType === 'personal') {
+            const personalTab = document.getElementById('personal-tab');
+            if (!personalTab || !personalTab.querySelector('.qq-input')?.value) {
+                throw new Error('请先在个人分析标签页输入QQ号并完成分析');
+            }
+        }
+        
+        // 发送请求
+        updateProgressStep('正在发送请求到服务器...');
+        
+        const response = await fetch('/api/ai/summary', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestData),
+            signal: generationController.signal
+        });
+        
+        // 处理响应
+        updateProgressStep('处理服务器响应...');
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || '服务器错误');
+        }
+        
+        if (!data.success) {
+            throw new Error(data.error || '生成失败');
+        }
+        
+        // 显示成功
+        updateProgressStep('总结生成完成！');
+        
+        // 延迟显示成功信息
+        await new Promise(r => setTimeout(r, 500));
+        
+        showSuccessContainer(data, targetType);
+        
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            addStreamLog('用户取消了生成操作', 'warning');
+        } else {
+            console.error('生成总结失败:', error);
+            addStreamLog(`生成失败: ${error.message}`, 'error');
+            showErrorContainer(error.message);
+        }
+    } finally {
+        // 恢复生成按钮
+        const generateBtn = document.getElementById('generate-summary-btn');
+        generateBtn.disabled = false;
+        generateBtn.textContent = '✨ 生成AI总结';
+    }
+}
+
+function cancelGeneration() {
+    if (generationController) {
+        generationController.abort();
+        addStreamLog('正在取消生成...', 'warning');
+    }
+}
+
+function showSuccessContainer(data, type) {
+    hideProgressContainer();
+    
+    const successContainer = document.getElementById('generation-success-container');
+    const contentDisplay = document.getElementById('summary-content-display');
+    const statsDiv = document.getElementById('generation-stats');
+    
+    // 显示统计信息
+    const elapsed = ((Date.now() - generationStartTime) / 1000).toFixed(1);
+    const statsText = `使用时间: ${elapsed}s | Tokens: ${data.tokens_used || 'N/A'} | 模型: ${data.model || 'N/A'}`;
+    if (statsDiv) {
+        statsDiv.textContent = statsText;
+    }
+    
+    // 显示总结内容
+    if (contentDisplay) {
+        contentDisplay.textContent = data.summary || '无内容';
+    }
+    
+    successContainer.style.display = 'block';
+}
+
+function showErrorContainer(errorMessage) {
+    hideProgressContainer();
+    
+    const errorContainer = document.getElementById('generation-error-container');
+    const errorMessageDiv = document.getElementById('error-message');
+    
+    if (errorMessageDiv) {
+        errorMessageDiv.textContent = errorMessage;
+    }
+    
+    errorContainer.style.display = 'block';
+}
+
+function resetSummaryUI() {
+    hideProgressContainer();
+    document.getElementById('generation-success-container').style.display = 'none';
+    document.getElementById('generation-error-container').style.display = 'none';
+}
+
+function copySummaryContent() {
+    const contentDisplay = document.getElementById('summary-content-display');
+    if (contentDisplay && contentDisplay.textContent) {
+        navigator.clipboard.writeText(contentDisplay.textContent).then(() => {
+            showConfigStatus('✅ 已复制到剪贴板', 'success');
+        }).catch(() => {
+            showConfigStatus('❌ 复制失败', 'error');
+        });
+    }
+}
+
+// 在DOMContentLoaded时初始化总结生成
+document.addEventListener('DOMContentLoaded', function() {
+    // 延迟初始化，确保其他元素已加载
+    setTimeout(initializeSummaryGeneration, 100);
+});

@@ -9,6 +9,10 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
+# 立即加载 .env 文件
+from dotenv import load_dotenv
+load_dotenv()
+
 from flask import Flask, render_template, request, jsonify, send_file
 from flask_cors import CORS
 
@@ -453,11 +457,11 @@ def generate_summary():
         filename = data.get('filename')
         max_tokens = data.get('max_tokens', 100000)
         
-        # 获取客户端传来的AI配置（如果有）
+        # 获取客户端传来的AI配置（如果有）或使用全局配置
         ai_config = data.get('ai_config', {})
-        api_key = ai_config.get('api_key') or None
-        base_url = ai_config.get('api_base') or None
-        model = ai_config.get('model') or None
+        api_key = ai_config.get('api_key') or Config.OPENAI_API_KEY
+        base_url = ai_config.get('api_base') or Config.OPENAI_API_BASE
+        model = ai_config.get('model') or Config.OPENAI_MODEL
         
         if not filename:
             return jsonify({'success': False, 'error': '未指定文件'}), 400
@@ -465,6 +469,12 @@ def generate_summary():
         filepath = Path('texts') / filename
         if not filepath.exists():
             return jsonify({'success': False, 'error': '文件不存在'}), 404
+        
+        if not api_key:
+            return jsonify({
+                'success': False,
+                'error': 'AI服务未配置，请设置 OPENAI_API_KEY 环境变量'
+            }), 503
         
         logger.info(f"Generating {summary_type} AI summary for {filename}")
         
@@ -514,14 +524,7 @@ def generate_summary():
                     'content': content
                 })
             i += 1
-        
-        # 生成聊天样本 (随机抽取100条)
-        import random
-        sample_messages = random.sample(messages, min(100, len(messages)))
-        chat_sample = '\n'.join([
-            f"[{m['time']}] {m['sender']}: {m['content']}" 
-            for m in sample_messages if m['content']
-        ])
+    
         
         result = None
         
@@ -536,23 +539,27 @@ def generate_summary():
             if not stats:
                 return jsonify({'success': False, 'error': f'未找到QQ {qq} 的数据'}), 404
             
-            result = summarizer.generate_personal_summary(stats.to_dict(), chat_sample)
+            # 传递完整消息列表，由summarizer内部进行智能稀疏采样
+            result = summarizer.generate_personal_summary(stats.to_dict(), messages=messages)
             
-        elif summary_type == 'group':
-            # 获取群体统计
-            analyzer = GroupAnalyzer()
-            analyzer.load_messages(messages)
-            stats = analyzer.analyze()
+        elif summary_type in ('group', 'network'):
+            # 合并处理：同时获取群体统计和网络统计
+            # 群体分析
+            group_analyzer = GroupAnalyzer()
+            group_analyzer.load_messages(messages)
+            group_stats = group_analyzer.analyze()
             
-            result = summarizer.generate_group_summary(stats.to_dict(), chat_sample)
+            # 网络分析
+            network_analyzer = NetworkAnalyzer()
+            network_analyzer.load_messages(messages)
+            network_stats = network_analyzer.analyze()
             
-        elif summary_type == 'network':
-            # 获取网络统计
-            analyzer = NetworkAnalyzer()
-            analyzer.load_messages(messages)
-            stats = analyzer.analyze()
-            
-            result = summarizer.generate_network_summary(stats.to_dict())
+            # 合并传递给summarizer进行群体+网络融合总结
+            result = summarizer.generate_group_summary(
+                group_stats=group_stats.to_dict(),
+                messages=messages,
+                network_stats=network_stats.to_dict()
+            )
         else:
             return jsonify({'success': False, 'error': f'未知的总结类型: {summary_type}'}), 400
         
