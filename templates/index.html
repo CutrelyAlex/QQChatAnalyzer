@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QQ聊天记录分析系统</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- Chart.js用于绘制图表 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <!-- vis.js用于社交网络可视化 -->
+    <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.2/dist/vis-network.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- 顶部导航栏 -->
+        <header class="header">
+            <div class="header-content">
+                <h1 class="app-title">💬 QQ聊天记录分析系统</h1>
+                <div class="header-controls">
+                    <div class="status-indicator">
+                        <span id="ai-status" class="status-badge disabled">AI离线</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- 文件选择面板 -->
+        <section class="file-panel">
+            <div class="panel-header">
+                <h2>📁 选择要分析的文件</h2>
+            </div>
+            <div class="panel-body">
+                <div class="file-selector">
+                    <select id="file-select" class="file-input">
+                        <option value="">-- 选择文件 --</option>
+                    </select>
+                    <button id="load-btn" class="btn btn-primary">加载文件</button>
+                </div>
+                <div id="load-status" class="status-message"></div>
+                <div class="file-info">
+                    <span id="loaded-file" class="info-label">未加载文件</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- 标签页容器 -->
+        <div class="tabs-container">
+            <!-- 标签页标题 -->
+            <div class="tabs-header">
+                <button class="tab-button active" data-tab="personal">
+                    👤 个人分析
+                </button>
+                <button class="tab-button" data-tab="group">
+                    👥 群体分析
+                </button>
+                <button class="tab-button" data-tab="network">
+                    🕸️ 社交网络
+                </button>
+                <button class="tab-button" data-tab="preview">
+                    📋 聊天预览
+                </button>
+                <button class="tab-button" data-tab="ai-config">
+                    🕸️ AI总结
+                </button>
+                <button class="tab-button" data-tab="export">
+                    📊 导出报告
+                </button>
+            </div>
+
+            <!-- 标签页内容 -->
+            <div class="tabs-content">
+                <!-- 个人分析标签页 -->
+                <div class="tab-pane active" id="personal-tab">
+                    <div class="tab-header">
+                        <h2>个人分析</h2>
+                        <p class="tab-description">分析特定成员的聊天活动、消息内容、互动行为等</p>
+                    </div>
+                    <div class="tab-body">
+                        <div class="input-group">
+                            <label for="qq-input">QQ号:</label>
+                            <input type="text" id="qq-input" placeholder="选择QQ号或输入" list="qq-list">
+                            <datalist id="qq-list"></datalist>
+                            <button id="personal-analyze-btn" class="btn btn-primary" disabled>
+                                分析个人
+                            </button>
+                        </div>
+                        
+                        <!-- 分析进度条 -->
+                        <div id="personal-progress" class="progress-container" style="display: none;">
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="personal-progress-fill"></div>
+                            </div>
+                            <div class="progress-text" id="personal-progress-text">正在分析中...</div>
+                        </div>
+                        
+                        <div id="personal-stats" class="stats-container" style="display: none;">
+                            <div class="stats-grid">
+                                <div class="stat-card">
+                                    <div class="stat-icon">💬</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">总发言次数</div>
+                                        <div class="stat-value" id="stat-messages">-</div>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">📅</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">活跃天数</div>
+                                        <div class="stat-value" id="stat-active-days">-</div>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">⏰</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">最活跃时段</div>
+                                        <div class="stat-value" id="stat-peak-time">-</div>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">📈</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">连续发言记录</div>
+                                        <div class="stat-value" id="stat-max-streak">-</div>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">🔗</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">@互动次数</div>
+                                        <div class="stat-value" id="stat-at-count">-</div>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">📝</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">平均消息长度</div>
+                                        <div class="stat-value" id="stat-avg-length">-</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="personal-charts" style="display: none;">
+                            <div class="chart-container">
+                                <h3>时段分布</h3>
+                                <canvas id="time-dist-chart"></canvas>
+                            </div>
+                            <div class="chart-container">
+                                <h3>周发言趋势</h3>
+                                <canvas id="weekly-chart"></canvas>
+                            </div>
+                            <div class="chart-container">
+                                <h3>🔥 个人热词榜</h3>
+                                <div id="personal-hot-words" class="hot-words-container"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 群体分析标签页 -->
+                <div class="tab-pane" id="group-tab">
+                    <div class="tab-header">
+                        <h2>群体分析</h2>
+                        <p class="tab-description">分析整个群的活动趋势、成员排行、热门话题等</p>
+                    </div>
+                    <div class="tab-body">
+                        <button id="group-analyze-btn" class="btn btn-primary">
+                            分析群体数据
+                        </button>
+
+                        <!-- 分析进度条 -->
+                        <div id="group-progress" class="progress-container" style="display: none;">
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="group-progress-fill"></div>
+                            </div>
+                            <div class="progress-text" id="group-progress-text">正在分析中...</div>
+                        </div>
+
+                        <div id="group-stats" class="stats-container" style="display: none;">
+                            <div class="stats-grid">
+                                <div class="stat-card">
+                                    <div class="stat-icon">💬</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">总消息数</div>
+                                        <div class="stat-value" id="stat-total-messages">-</div>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">👥</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">参与成员</div>
+                                        <div class="stat-value" id="stat-members">-</div>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">📊</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">日均消息</div>
+                                        <div class="stat-value" id="stat-daily-avg">-</div>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">🔥</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">最活跃时段</div>
+                                        <div class="stat-value" id="stat-peak-hour">-</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="group-charts" style="display: none;">
+                            <div class="chart-container">
+                                <h3>月度消息趋势</h3>
+                                <canvas id="monthly-trend-chart"></canvas>
+                            </div>
+                            <div class="chart-container">
+                                <h3>成员活跃排行</h3>
+                                <canvas id="member-ranking-chart"></canvas>
+                            </div>
+                            <div class="chart-container">
+                                <h3>🔥 群热词榜</h3>
+                                <div id="group-hot-words" class="hot-words-container"></div>
+                            </div>
+                            <div class="chart-container">
+                                <h3>📊 消息类型分布</h3>
+                                <canvas id="message-type-chart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 社交网络标签页 -->
+                <div class="tab-pane" id="network-tab">
+                    <div class="tab-header">
+                        <h2>社交网络分析</h2>
+                        <p class="tab-description">可视化成员之间的互动关系网络</p>
+                    </div>
+                    <div class="tab-body">
+                        <button id="network-analyze-btn" class="btn btn-primary">
+                            生成网络图
+                        </button>
+
+                        <!-- 分析进度条 -->
+                        <div id="network-progress" class="progress-container" style="display: none;">
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="network-progress-fill"></div>
+                            </div>
+                            <div class="progress-text" id="network-progress-text">正在分析中...</div>
+                        </div>
+
+                        <div id="network-stats" class="stats-container" style="display: none;">
+                            <div class="stats-grid">
+                                <div class="stat-card">
+                                    <div class="stat-icon">🔗</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">节点数</div>
+                                        <div class="stat-value" id="stat-nodes">-</div>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">→</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">连接数</div>
+                                        <div class="stat-value" id="stat-edges">-</div>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">⭐</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">最受欢迎成员</div>
+                                        <div class="stat-value" id="stat-most-popular">-</div>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">🤝</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">最活跃互动对</div>
+                                        <div class="stat-value" id="stat-active-pair">-</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="network-graph-container" style="display: none;">
+                            <div id="network-graph" style="width: 100%; height: 600px; border: 1px solid #ddd; border-radius: 8px;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 聊天预览标签页 -->
+                <div class="tab-pane" id="preview-tab">
+                    <div class="tab-header">
+                        <h2>聊天记录预览</h2>
+                        <p class="tab-description">浏览和筛选聊天记录内容</p>
+                    </div>
+                    <div class="tab-body">
+                        <div class="preview-filters">
+                            <div class="filter-group">
+                                <label for="preview-date-filter">按日期筛选:</label>
+                                <select id="preview-date-filter" class="filter-select">
+                                    <option value="">-- 所有日期 --</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label for="preview-qq-filter">按QQ号筛选:</label>
+                                <select id="preview-qq-filter" class="filter-select">
+                                    <option value="">-- 所有成员 --</option>
+                                </select>
+                            </div>
+                            <button id="preview-load-btn" class="btn btn-primary">
+                                加载记录
+                            </button>
+                        </div>
+
+                        <div id="preview-stats" class="preview-stats" style="display: none;">
+                            <div class="stat-info">
+                                <span>总记录: <strong id="preview-total">0</strong></span>
+                                <span>当前页: <strong id="preview-current-page">1</strong></span>
+                                <span>共 <strong id="preview-total-pages">1</strong> 页</span>
+                            </div>
+                        </div>
+
+                        <div id="preview-records" class="preview-records" style="display: none;">
+                            <table class="records-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 180px;">时间</th>
+                                        <th style="width: 150px;">发言人(QQ)</th>
+                                        <th>消息内容</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="preview-records-body">
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div id="preview-pagination" class="pagination" style="display: none;">
+                            <button id="preview-prev-btn" class="btn btn-secondary">上一页</button>
+                            <span id="preview-page-info">第 1 页</span>
+                            <button id="preview-next-btn" class="btn btn-secondary">下一页</button>
+                        </div>
+
+                        <div id="preview-empty" class="empty-state" style="display: none;">
+                            <p>⚠️ 没有找到匹配的记录</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AI配置标签页 -->
+                <div class="tab-pane" id="ai-config-tab">
+                    <div class="tab-header">
+                        <h2>⚙️ AI功能配置</h2>
+                        <p class="tab-description">自定义AI总结的各项参数和高级设置</p>
+                    </div>
+                    <div class="tab-body">
+                        <!-- 基础配置 -->
+                        <div class="config-section">
+                            <h3>🎯 基础配置</h3>
+                            
+                            <div class="config-group">
+                                <label for="ai-enable-toggle">启用AI功能:</label>
+                                <div class="toggle-switch">
+                                    <input type="checkbox" id="ai-enable-toggle" class="toggle-input" checked>
+                                    <label for="ai-enable-toggle" class="toggle-label"></label>
+                                    <span id="ai-status-text" class="status-text">✅ 已启用</span>
+                                </div>
+                            </div>
+
+                            <div class="config-group">
+                                <label for="ai-target-select">分析对象:</label>
+                                <select id="ai-target-select" class="config-input">
+                                    <option value="personal">个人分析</option>
+                                    <option value="group" selected>群体分析</option>
+                                    <option value="network">社交网络</option>
+                                </select>
+                            </div>
+
+                            <div class="config-group">
+                                <label for="ai-token-limit">Token限制:</label>
+                                <div class="slider-container">
+                                    <input type="range" id="ai-token-limit" class="config-slider" min="1000" max="100000" value="5000" step="1000">
+                                    <span id="ai-token-limit-value" class="slider-value">5000</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 高级设置 -->
+                        <div class="config-section">
+                            <h3>🔧 高级设置</h3>
+                            <button id="toggle-advanced" class="btn btn-secondary btn-small">展开高级设置</button>
+                            
+                            <div id="advanced-settings" style="display: none; margin-top: 20px;">
+                                <div class="config-group">
+                                    <label for="ai-api-base">API基础URL:</label>
+                                    <input type="text" id="ai-api-base" class="config-input" placeholder="https://api.openai.com/v1">
+                                </div>
+
+                                <div class="config-group">
+                                    <label for="ai-api-key">API密钥:</label>
+                                    <div class="password-input-group">
+                                        <input type="password" id="ai-api-key" class="config-input" placeholder="sk-..." autocomplete="off">
+                                        <button type="button" id="toggle-api-key" class="btn-icon btn-toggle-password" title="显示/隐藏">⊘</button>
+                                    </div>
+                                </div>
+
+                                <div class="config-group">
+                                    <label for="ai-model">模型名称:</label>
+                                    <input type="text" id="ai-model" class="config-input" placeholder="如gpt-4o-mini">
+                                </div>
+
+                                <div class="config-group">
+                                    <label for="ai-temperature">温度 (Temperature):</label>
+                                    <div class="slider-container">
+                                        <input type="range" id="ai-temperature" class="config-slider" min="0" max="2" value="0.7" step="0.1">
+                                        <span id="ai-temperature-value" class="slider-value">0.7</span>
+                                    </div>
+                                    <small style="color: #999;">范围 0-2, 越低越稳定，越高越创意</small>
+                                </div>
+
+                                <div class="config-group">
+                                    <label for="ai-top-p">Top P:</label>
+                                    <div class="slider-container">
+                                        <input type="range" id="ai-top-p" class="config-slider" min="0" max="1" value="0.9" step="0.05">
+                                        <span id="ai-top-p-value" class="slider-value">0.9</span>
+                                    </div>
+                                    <small style="color: #999;">范围 0-1, 控制采样的多样性</small>
+                                </div>
+
+                                <div class="config-group">
+                                    <label for="ai-timeout">超时时间 (秒):</label>
+                                    <input type="number" id="ai-timeout" class="config-input" min="10" max="120" value="30">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 配置操作 -->
+                        <div class="config-actions" style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
+                            <button id="save-config-btn" class="btn btn-primary">💾 保存配置</button>
+                            <button id="reset-config-btn" class="btn btn-secondary">🔄 恢复默认</button>
+                            <button id="test-config-btn" class="btn btn-secondary">🧪 测试连接</button>
+                        </div>
+
+                        <!-- 配置状态 -->
+                        <div id="config-status" class="config-status" style="display: none; margin-top: 20px;">
+                            <div id="config-status-message"></div>
+                        </div>
+
+                        <!-- 生成总结部分 -->
+                        <div class="summary-section" style="margin-top: 40px; padding-top: 30px; border-top: 2px solid #eee;">
+                            <h3>🤖 生成AI总结</h3>
+                            <p style="color: #666; margin-bottom: 20px;">配置完成后，选择分析类型并生成创意风格的总结报告</p>
+                            
+                            <div class="summary-control">
+                                <div class="config-group">
+                                    <label for="summary-target-select">选择要总结的内容:</label>
+                                    <select id="summary-target-select" class="config-input">
+                                        <option value="personal">👤 个人分析</option>
+                                        <option value="group" selected>👥 群体分析</option>
+                                        <option value="network">🕸️ 社交网络</option>
+                                    </select>
+                                </div>
+
+                                <div class="action-group" style="margin-top: 20px;">
+                                    <button id="generate-summary-btn" class="btn btn-primary" disabled>
+                                        ✨ 生成AI总结
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 导出报告标签页 -->
+                <div class="tab-pane" id="export-tab">
+                    <div class="tab-header">
+                        <h2>导出报告</h2>
+                        <p class="tab-description">将分析结果导出为HTML或PDF报告</p>
+                    </div>
+                    <div class="tab-body">
+                        <div class="export-options">
+                            <div class="option-group">
+                                <label>报告格式:</label>
+                                <div class="radio-group">
+                                    <label class="radio-item">
+                                        <input type="radio" name="export-format" value="html" checked>
+                                        <span>HTML (网页)</span>
+                                    </label>
+                                    <label class="radio-item">
+                                        <input type="radio" name="export-format" value="pdf">
+                                        <span>PDF (文档)</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="option-group">
+                                <label>包含内容:</label>
+                                <div class="checkbox-group">
+                                    <label class="checkbox-item">
+                                        <input type="checkbox" name="export-content" value="personal" checked>
+                                        <span>个人分析</span>
+                                    </label>
+                                    <label class="checkbox-item">
+                                        <input type="checkbox" name="export-content" value="group" checked>
+                                        <span>群体分析</span>
+                                    </label>
+                                    <label class="checkbox-item">
+                                        <input type="checkbox" name="export-content" value="network" checked>
+                                        <span>社交网络</span>
+                                    </label>
+                                    <label class="checkbox-item">
+                                        <input type="checkbox" name="export-content" value="ai-summary">
+                                        <span>AI总结</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="action-group">
+                            <button id="export-btn" class="btn btn-primary" disabled>
+                                📥 导出报告
+                            </button>
+                        </div>
+
+                        <div id="export-status" class="status-message"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+
+        <!-- AI总结弹窗 -->
+        <div id="summary-modal" class="modal" style="display: none;">
+            <div class="modal-content modal-large">
+                <div class="modal-header">
+                    <h2 id="summary-title">🤖 AI智能总结</h2>
+                    <button class="close-btn" onclick="closeSummaryModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div id="summary-loading" class="loading" style="display: none;">
+                        <div class="spinner"></div>
+                        <p>🎨 正在生成创意报告，请稍候...</p>
+                        <small style="color: #888;">正在生成创意报告...</small>
+                    </div>
+                    <div id="summary-content" style="display: none;">
+                        <div class="summary-text-container">
+                            <div id="summary-text" class="markdown-content"></div>
+                        </div>
+                        <div class="summary-metadata">
+                            <small>
+                                ⏱️ 生成时间: <span id="summary-time">-</span> | 
+                                📊 Token消耗: <span id="summary-tokens">-</span> |
+                                🤖 模型: <span id="summary-model">-</span>
+                            </small>
+                        </div>
+                    </div>
+                    <div id="summary-error" class="error-message" style="display: none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeSummaryModal()">关闭</button>
+                    <button class="btn btn-primary" onclick="copySummary()">📋 复制内容</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 底部信息栏 -->
+        <footer class="footer">
+            <div class="footer-content">
+                <span class="app-version">v1.0.0</span>
+                <span class="separator">|</span>
+                <span id="footer-status">就绪</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- 模块化 JavaScript 文件 -->
+    <script src="{{ url_for('static', filename='js/core.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/file-handler.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/analyzer.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/ai-summary.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/ui.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/network.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/hotwords.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/config.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+.env
+/specs
+/src/__pycache__
+/.vs
+/.specify
+/__pycache__
+/.vscode
+/texts

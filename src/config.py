@@ -1,0 +1,89 @@
+"""
+配置管理模块 - 读取和验证环境变量
+"""
+
+import os
+from dotenv import load_dotenv
+
+# 加载 .env 文件
+load_dotenv()
+
+
+class Config:
+    """应用配置类"""
+    
+    # Flask配置
+    DEBUG = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
+    HOST = os.getenv('FLASK_HOST', '127.0.0.1')
+    PORT = int(os.getenv('FLASK_PORT', 5000))
+    
+    # AI配置 - OpenAI兼容API
+    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
+    OPENAI_API_BASE = os.getenv('OPENAI_API_BASE', 'https://api.openai.com/v1')
+    OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-3.5-turbo')
+    OPENAI_REQUEST_TIMEOUT = int(os.getenv('OPENAI_REQUEST_TIMEOUT', 30))
+    
+    # 数据处理配置
+    MAX_FILE_SIZE_MB = int(os.getenv('MAX_FILE_SIZE_MB', 100))
+    MAX_MEMBERS = int(os.getenv('MAX_MEMBERS', 5000))
+    MAX_RECORDS_PER_LOAD = int(os.getenv('MAX_RECORDS_PER_LOAD', 1000000))
+    
+    # AI总结配置
+    DEFAULT_MAX_TOKENS = int(os.getenv('DEFAULT_MAX_TOKENS', 200000))
+    RESERVED_TOKENS = int(os.getenv('RESERVED_TOKENS', 500))
+    DEFAULT_RETENTION_RATIO = float(os.getenv('DEFAULT_RETENTION_RATIO', 0.8))
+    
+    @classmethod
+    def validate_config(cls):
+        """验证配置的有效性"""
+        issues = []
+        
+        # 检查AI API配置
+        if not cls.OPENAI_API_KEY:
+            issues.append("❌ OPENAI_API_KEY 未配置，AI功能将不可用")
+        
+        if not cls.OPENAI_API_BASE:
+            issues.append("❌ OPENAI_API_BASE 未配置")
+        
+        if cls.OPENAI_REQUEST_TIMEOUT < 10:
+            issues.append("⚠️  OPENAI_REQUEST_TIMEOUT 过短 (<10s)，可能导致API请求超时")
+        
+        if cls.MAX_FILE_SIZE_MB < 1:
+            issues.append("❌ MAX_FILE_SIZE_MB 配置无效")
+        
+        if cls.DEFAULT_MAX_TOKENS < 100:
+            issues.append("⚠️  DEFAULT_MAX_TOKENS 过小，可能影响AI总结效果")
+        
+        if cls.DEFAULT_RETENTION_RATIO <= 0 or cls.DEFAULT_RETENTION_RATIO > 1:
+            issues.append("❌ DEFAULT_RETENTION_RATIO 必须在 0-1 之间")
+        
+        return issues
+    
+    @classmethod
+    def print_config_status(cls):
+        """打印配置状态"""
+        print("\n" + "="*50)
+        print("📋 应用配置状态")
+        print("="*50)
+        print(f"🔧 Flask: {cls.HOST}:{cls.PORT} (DEBUG={cls.DEBUG})")
+        print(f"🤖 OpenAI API: {cls.OPENAI_API_BASE}")
+        print(f"📝 模型: {cls.OPENAI_MODEL}")
+        print(f"⏱️  API超时: {cls.OPENAI_REQUEST_TIMEOUT}s")
+        print(f"💾 最大文件: {cls.MAX_FILE_SIZE_MB}MB")
+        print(f"👥 最大成员数: {cls.MAX_MEMBERS}")
+        print(f"📊 Token限制: {cls.DEFAULT_MAX_TOKENS} (预留: {cls.RESERVED_TOKENS})")
+        
+        # 验证并显示问题
+        issues = cls.validate_config()
+        if issues:
+            print("\n⚠️  配置问题:")
+            for issue in issues:
+                print(f"   {issue}")
+        else:
+            print("\n✅ 配置全部有效")
+        
+        print("="*50 + "\n")
+
+
+if __name__ == '__main__':
+    Config.print_config_status()
