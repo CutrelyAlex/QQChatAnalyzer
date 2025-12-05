@@ -504,7 +504,7 @@ def list_analysis_cache():
 
 @app.route('/api/analysis/save', methods=['POST'])
 def save_analysis():
-    """T059: 保存分析数据到缓存 - 同时生成并保存chat_sample"""
+    """T059: 保存分析数据到缓存"""
     try:
         import pickle
         import hashlib
@@ -522,52 +522,6 @@ def save_analysis():
         # 创建缓存目录
         cache_dir = Path('exports/.analysis_cache')
         cache_dir.mkdir(parents=True, exist_ok=True)
-        
-        # 解析原始文件获取聊天记录，用于生成chat_sample
-        filepath = Path('texts') / filename
-        chat_sample = ""
-        
-        if filepath.exists():
-            messages = []
-            time_pattern = r'^(\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}:\d{2}) (.+)\((\d+)\)'
-            
-            with open(filepath, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
-            
-            i = 0
-            while i < len(lines):
-                line = lines[i].strip()
-                m = re.match(time_pattern, line)
-                if m:
-                    timestamp, sender, qq = m.group(1), m.group(2), m.group(3)
-                    content = ""
-                    if i + 1 < len(lines):
-                        next_line = lines[i + 1].strip()
-                        if not re.match(time_pattern, next_line):
-                            content = next_line
-                            i += 1
-                    messages.append({'time': timestamp, 'sender': sender, 'qq': qq, 'content': content})
-                i += 1
-            
-            # 生成稀疏采样的chat_sample
-            from ai_summarizer import AISummarizer
-            summarizer = AISummarizer(
-                model=Config.OPENAI_MODEL,
-                api_key=Config.OPENAI_API_KEY,
-                base_url=Config.OPENAI_API_BASE,
-                context_budget=Config.DEFAULT_CONTEXT_BUDGET
-            )
-            
-            if analysis_type == 'personal':
-                qq = data.get('qq')
-                chat_sample = summarizer._sparse_sample_messages(messages, qq) if qq else ""
-            else:
-                chat_sample = summarizer._sparse_sample_messages(messages)
-            
-            logger.info(f"Generated chat_sample with {len(chat_sample)} characters")
-        
-        # 将chat_sample添加到analysis_data中
-        analysis_data['chat_sample'] = chat_sample
         
         # 生成唯一的缓存ID
         cache_id_source = f"{analysis_type}_{filename}_{datetime.now().isoformat()}"
@@ -713,17 +667,40 @@ def generate_summary():
                 'error': 'AI服务未配置，请设置 OPENAI_API_KEY 环境变量'
             }), 503
         
-        # 如果有缓存的分析数据，直接使用；否则实时分析
+        # 如果有缓存的分析数据，需要从原文件读取消息列表以生成 chat_sample
         if analysis_data:
+            # 读取原文件生成 messages
+            import re
+            cache_messages = []
+            time_pattern = r'^(\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}:\d{2}) (.+)\((\d+)\)'
+            
+            with open(filepath, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+            
+            i = 0
+            while i < len(lines):
+                line = lines[i].strip()
+                m = re.match(time_pattern, line)
+                if m:
+                    timestamp, sender, qq = m.group(1), m.group(2), m.group(3)
+                    content = ""
+                    if i + 1 < len(lines):
+                        next_line = lines[i + 1].strip()
+                        if not re.match(time_pattern, next_line):
+                            content = next_line
+                            i += 1
+                    cache_messages.append({'time': timestamp, 'sender': sender, 'qq': qq, 'content': content})
+                i += 1
+            
             if summary_type == 'personal':
                 result = summarizer.generate_personal_summary(
                     analysis_data.get('stats', {}),
-                    chat_sample=analysis_data.get('chat_sample', '')
+                    messages=cache_messages
                 )
             else:
                 result = summarizer.generate_group_summary(
                     group_stats=analysis_data.get('group_stats', {}),
-                    chat_sample=analysis_data.get('chat_sample', ''),
+                    messages=cache_messages,
                     network_stats=analysis_data.get('network_stats')
                 )
             return jsonify(result)
@@ -891,24 +868,50 @@ def generate_summary_stream():
         
         def generate():
             try:
-                # 如果有缓存数据，直接使用
+                # 如果有缓存数据，需要重新从原文件读取聊天记录生成 chat_sample
+                chat_sample = ""
+                if cached_data and filepath and filepath.exists():
+                    # 读取原文件生成 chat_sample
+                    import re
+                    cache_messages = []
+                    time_pattern = r'^(\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}:\d{2}) (.+)\((\d+)\)'
+                    
+                    with open(filepath, 'r', encoding='utf-8') as f:
+                        lines = f.readlines()
+                    
+                    i = 0
+                    while i < len(lines):
+                        line = lines[i].strip()
+                        m = re.match(time_pattern, line)
+                        if m:
+                            timestamp, sender, qq = m.group(1), m.group(2), m.group(3)
+                            content = ""
+                            if i + 1 < len(lines):
+                                next_line = lines[i + 1].strip()
+                                if not re.match(time_pattern, next_line):
+                                    content = next_line
+                                    i += 1
+                            cache_messages.append({'time': timestamp, 'sender': sender, 'qq': qq, 'content': content})
+                        i += 1
+                    
+                    if summary_type == 'personal':
+                        target_qq = cached_data.get('stats', {}).get('qq', '')
+                        chat_sample = summarizer._sparse_sample_messages(cache_messages, target_qq)
+                    else:
+                        chat_sample = summarizer._sparse_sample_messages(cache_messages)
+                    
+                    logger.info(f"Generated chat_sample from file: {len(chat_sample)} chars")
+                
                 if cached_data:
                     logger.info(f"Generating from cached data, type={summary_type}")
                     
                     if summary_type == 'personal':
                         stats = cached_data.get('stats', {})
-                        chat_sample = cached_data.get('chat_sample', '')
-                        if not chat_sample:
-                            # 生成简单的聊天样本
-                            chat_sample = "（缓存数据中无聊天样本）"
                         prompt = summarizer._build_personal_prompt(stats, chat_sample)
                         system_prompt = summarizer._get_system_prompt('personal')
                     else:
                         group_stats = cached_data.get('group_stats', {})
                         network_stats = cached_data.get('network_stats', {})
-                        chat_sample = cached_data.get('chat_sample', '')
-                        if not chat_sample:
-                            chat_sample = "（缓存数据中无聊天样本）"
                         prompt = summarizer._build_group_and_network_prompt(
                             group_stats, network_stats, chat_sample
                         )
@@ -947,6 +950,7 @@ def generate_summary_stream():
                         if not stats:
                             yield f"data: {json.dumps({'type': 'error', 'message': f'未找到QQ {qq} 的数据'})}\n\n"
                             return
+                        # 使用稀疏采样生成聊天记录样本
                         chat_sample = summarizer._sparse_sample_messages(messages, qq)
                         prompt = summarizer._build_personal_prompt(stats.to_dict(), chat_sample)
                         system_prompt = summarizer._get_system_prompt('personal')
@@ -959,6 +963,7 @@ def generate_summary_stream():
                         network_analyzer.load_messages(messages)
                         network_stats = network_analyzer.analyze()
                         
+                        # 使用稀疏采样生成聊天记录样本
                         chat_sample = summarizer._sparse_sample_messages(messages)
                         prompt = summarizer._build_group_and_network_prompt(
                             group_stats.to_dict(), network_stats.to_dict(), chat_sample

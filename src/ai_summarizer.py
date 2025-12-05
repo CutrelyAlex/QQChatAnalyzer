@@ -382,33 +382,7 @@ class AISummarizer:
                 'error': str(e)
             }
     
-    def generate_network_summary(self, network_stats: Dict[str, Any], 
-                                   chat_sample: str = "",
-                                   messages: List[Dict[str, Any]] = None,
-                                   group_stats: Dict[str, Any] = None) -> Dict[str, Any]:
-        """
-        T057: 生成社交网络和群体融合总结（兼容接口）
-        
-        此方法已合并到 generate_group_summary 中，
-        为了向后兼容，直接转发到 generate_group_summary
-        
-        Args:
-            network_stats: NetworkStats.to_dict() 的结果
-            chat_sample: 可选的聊天记录样本
-            messages: 完整的消息列表
-            group_stats: GroupStats.to_dict() 的结果（可选）
-        
-        Returns:
-            {'success': bool, 'summary': str, 'error': str}
-        """
-        # 转发到合并的generate_group_summary
-        return self.generate_group_summary(
-            group_stats=group_stats or {},
-            chat_sample=chat_sample,
-            messages=messages,
-            network_stats=network_stats
-        )
-    
+
     def _get_system_prompt(self, summary_type: str) -> str:
         """获取系统提示词"""
         
@@ -795,52 +769,3 @@ class AISummarizer:
         
         return prompt
     
-    def _build_network_prompt(self, stats: Dict[str, Any], 
-                              chat_sample: str = "") -> str:
-        """
-        构建社交网络总结的用户提示词（已弃用，保留向后兼容）
-        
-        此方法已被 _build_group_and_network_prompt 取代
-        """
-        logger.warning("_build_network_prompt 已弃用，请使用 _build_group_and_network_prompt")
-        return self._build_group_and_network_prompt({}, stats, chat_sample)
-
-
-# 快捷函数
-def generate_summary(summary_type: str, stats: Dict[str, Any], 
-                     chat_sample: str = "",
-                     messages: List[Dict[str, Any]] = None,
-                     context_budget: int = None,
-                     network_stats: Dict[str, Any] = None) -> Dict[str, Any]:
-    """
-    快速生成AI总结
-    
-    Args:
-        summary_type: 'personal'、'group'、'group_and_network' 或 'network'（后两个会合并处理）
-        stats: 对应的统计数据（group 或 network 时为主要数据）
-        chat_sample: 可选的聊天样本（兼容旧接口）
-        messages: 完整的消息列表（推荐，会自动进行智能稀疏采样）
-        context_budget: 聊天记录的Token预算
-        network_stats: 网络统计数据（group_and_network 模式下使用）
-    
-    Returns:
-        {'success': bool, 'summary': str, 'error': str}
-    """
-    summarizer = AISummarizer(context_budget=context_budget)
-    
-    if summary_type == 'personal':
-        return summarizer.generate_personal_summary(stats, chat_sample, messages)
-    elif summary_type in ('group', 'network', 'group_and_network'):
-        # group 和 network 类型都会合并到 group_and_network 处理
-        return summarizer.generate_group_summary(
-            group_stats=stats,
-            chat_sample=chat_sample,
-            messages=messages,
-            network_stats=network_stats
-        )
-    else:
-        return {
-            'success': False,
-            'summary': '',
-            'error': f'Unknown summary type: {summary_type}'
-        }
