@@ -72,16 +72,16 @@ function renderNetworkGraph(nodes, edges) {
             y: y,
             // 移除 fixed 属性，允许拖动
             color: {
-                background: isCore ? '#ff6b6b' : '#1890ff',  // 核心节点红色
-                border: isCore ? '#c92a2a' : '#0050b3',
+                background: isCore ? '#ff6b6b' : '#ff7f00',  // 核心节点红色，普通节点橙色
+                border: isCore ? '#c92a2a' : '#cc6600',
                 highlight: {
-                    background: isCore ? '#ff8787' : '#40a9ff',
-                    border: isCore ? '#c92a2a' : '#0050b3'
+                    background: isCore ? '#ff8787' : '#ff9933',
+                    border: isCore ? '#c92a2a' : '#cc6600'
                 }
             },
             font: {
-                size: isCore ? 14 : 12,
-                color: '#000',
+                size: isCore ? 14 : 10, 
+                color: '#ffffff',
                 bold: isCore ? { mod: 'bold' } : {}
             },
             borderWidth: isCore ? 3 : 2,
@@ -126,7 +126,7 @@ function renderNetworkGraph(nodes, edges) {
                 max: 50
             },
             font: {
-                size: 12,
+                size: 3,
                 face: 'Arial',
                 multi: true
             },
@@ -150,7 +150,7 @@ function renderNetworkGraph(nodes, edges) {
                 max: 4
             },
             font: {
-                size: 10,
+                size: 1,  
                 color: '#888',
                 strokeWidth: 0
             },
@@ -359,7 +359,7 @@ function addNetworkLegend(container, coreCount, outerCount) {
                 <span>核心成员 (${coreCount}人) - 中心区域</span>
             </div>
             <div style="display: flex; align-items: center; margin: 4px 0;">
-                <span style="width: 12px; height: 12px; background: #1890ff; border-radius: 50%; display: inline-block; margin-right: 8px;"></span>
+                <span style="width: 12px; height: 12px; background: #ff7f00; border-radius: 50%; display: inline-block; margin-right: 8px;"></span>
                 <span>普通成员 (${outerCount}人) - 外圈</span>
             </div>
             <div style="color: #888; margin-top: 6px; font-size: 11px;">
