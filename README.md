@@ -8,7 +8,7 @@
 ```bash
 python -m pip install -r requirements.txt
 ```
-3. 配置项目，复制一份根目录下的`.env.example`，并按照注释修改其中的内容
+3. 配置项目，复制一份根目录下的`.env.example`重命名为`.env`，并按照注释修改其中的内容
 4. 运行应用程序：
 ```bash
 python app.py
