@@ -9,7 +9,8 @@ let appState = {
     currentFile: null,
     fileData: null,
     aiEnabled: localStorage.getItem('ai_enabled') === 'true',
-    aiMaxTokens: parseInt(localStorage.getItem('ai_max_tokens') || '100000'),
+    aiOutputTokens: parseInt(localStorage.getItem('ai_output_tokens') || '4000'),
+    aiContextTokens: parseInt(localStorage.getItem('ai_context_tokens') || '60000'),
     selectedQQ: null,
     analysisData: {
         personal: null,
@@ -51,7 +52,8 @@ function initializeUI() {
 
 function bindEvents() {
     // 文件加载
-    document.getElementById('load-btn').addEventListener('click', loadFile);
+    const loadBtn = document.getElementById('load-btn');
+    if (loadBtn) loadBtn.addEventListener('click', loadFile);
     
     // 标签页切换
     document.querySelectorAll('.tab-button').forEach(btn => {
@@ -59,30 +61,43 @@ function bindEvents() {
     });
     
     // 分析按钮
-    document.getElementById('personal-analyze-btn').addEventListener('click', analyzePersonal);
-    document.getElementById('group-analyze-btn').addEventListener('click', analyzeGroup);
-    document.getElementById('network-analyze-btn').addEventListener('click', analyzeNetwork);
+    const personalAnalyzeBtn = document.getElementById('personal-analyze-btn');
+    if (personalAnalyzeBtn) personalAnalyzeBtn.addEventListener('click', analyzePersonal);
     
-    // AI总结按钮
-    document.getElementById('personal-summary-btn').addEventListener('click', () => generateSummary('personal'));
-    document.getElementById('group-summary-btn').addEventListener('click', () => generateSummary('group'));
-    document.getElementById('network-summary-btn').addEventListener('click', () => generateSummary('network'));
+    const groupAnalyzeBtn = document.getElementById('group-analyze-btn');
+    if (groupAnalyzeBtn) groupAnalyzeBtn.addEventListener('click', analyzeGroup);
+    
+    const networkAnalyzeBtn = document.getElementById('network-analyze-btn');
+    if (networkAnalyzeBtn) networkAnalyzeBtn.addEventListener('click', analyzeNetwork);
     
     // 导出按钮
-    document.getElementById('export-btn').addEventListener('click', exportReport);
+    const exportBtn = document.getElementById('export-btn');
+    if (exportBtn) exportBtn.addEventListener('click', exportReport);
     
     // 预览功能
-    document.getElementById('preview-load-btn').addEventListener('click', loadChatRecords);
-    document.getElementById('preview-prev-btn').addEventListener('click', prevPreviewPage);
-    document.getElementById('preview-next-btn').addEventListener('click', nextPreviewPage);
+    const previewLoadBtn = document.getElementById('preview-load-btn');
+    if (previewLoadBtn) previewLoadBtn.addEventListener('click', loadChatRecords);
+    
+    const previewPrevBtn = document.getElementById('preview-prev-btn');
+    if (previewPrevBtn) previewPrevBtn.addEventListener('click', prevPreviewPage);
+    
+    const previewNextBtn = document.getElementById('preview-next-btn');
+    if (previewNextBtn) previewNextBtn.addEventListener('click', nextPreviewPage);
     
     // 预览筛选器重置分页
-    document.getElementById('preview-date-filter').addEventListener('change', () => {
-        appState.previewData.currentPage = 1;
-    });
-    document.getElementById('preview-qq-filter').addEventListener('change', () => {
-        appState.previewData.currentPage = 1;
-    });
+    const previewDateFilter = document.getElementById('preview-date-filter');
+    if (previewDateFilter) {
+        previewDateFilter.addEventListener('change', () => {
+            appState.previewData.currentPage = 1;
+        });
+    }
+    
+    const previewQQFilter = document.getElementById('preview-qq-filter');
+    if (previewQQFilter) {
+        previewQQFilter.addEventListener('change', () => {
+            appState.previewData.currentPage = 1;
+        });
+    }
 }
 
 // ============ 标签页切换 ============

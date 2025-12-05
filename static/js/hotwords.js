@@ -88,44 +88,17 @@ function renderHotWords(containerId, hotWords) {
 }
 
 /**
- * 过滤掉 @昵称 和 其他昵称 的热词
+ * 过滤掉 @昵称 的热词
  * @param {Array} hotWords - 热词数组
  * @returns {Array} - 过滤后的热词数组
  */
 function filterMentionedNames(hotWords) {
-    // 建立昵称快速查找表，避免重复搜索
-    const nicknameSet = new Set();
-    
-    if (typeof appState !== 'undefined' && appState.allNicknames && Array.isArray(appState.allNicknames)) {
-        appState.allNicknames.forEach(name => {
-            if (name) {
-                nicknameSet.add(name);
-            }
-        });
-    }
-    
     return hotWords.filter(word => {
         const w = word.word || '';
         
-        // 过滤以 @ 开头的词（如 @user）
+        // 过滤以 @ 开头的词
         if (w.startsWith('@')) {
             return false;
-        }
-        
-        // 过滤完整的昵称
-        if (nicknameSet.has(w)) {
-            return false;
-        }
-        
-        // 过滤包含在昵称中的词（如果词在某个昵称内，过滤掉）
-        for (const nickname of nicknameSet) {
-            if (nickname.includes(w) && w.length < nickname.length) {
-                // 只在词明显是昵称的子串时过滤
-                // 使用启发式方法：如果词长度至少是昵称的1/2，可能是有意义的词
-                if (w.length < Math.ceil(nickname.length / 2)) {
-                    return false;
-                }
-            }
         }
         
         return true;

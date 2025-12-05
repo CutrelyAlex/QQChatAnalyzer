@@ -153,6 +153,11 @@
                                 <h3>🔥 个人热词榜</h3>
                                 <div id="personal-hot-words" class="hot-words-container"></div>
                             </div>
+                            
+                            <!-- 保存分析数据按钮 -->
+                            <button id="save-personal-cache-btn" class="btn btn-secondary" style="margin-top: 15px; display: none;">
+                                💾 保存分析数据
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -226,6 +231,28 @@
                                 <h3>📊 消息类型分布</h3>
                                 <canvas id="message-type-chart"></canvas>
                             </div>
+                            
+                            <!-- 新增：时段活跃分析 -->
+                            <div class="chart-container">
+                                <h3>⏰ 每小时最活跃用户</h3>
+                                <div id="hourly-top-users" class="time-analysis-grid"></div>
+                            </div>
+                            
+                            <div class="chart-container">
+                                <h3>📅 每周各日最活跃用户</h3>
+                                <div id="weekday-top-users" class="weekday-analysis"></div>
+                            </div>
+                            
+                            <div class="chart-container">
+                                <h3>📆 全年各星期几消息统计</h3>
+                                <div id="weekday-totals" class="weekday-totals-chart"></div>
+                                <canvas id="weekday-totals-chart"></canvas>
+                            </div>
+                            
+                            <!-- 保存分析数据按钮 -->
+                            <button id="save-group-cache-btn" class="btn btn-secondary" style="margin-top: 15px; display: none;">
+                                💾 保存分析数据
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -287,6 +314,11 @@
                         <div id="network-graph-container" style="display: none;">
                             <div id="network-graph" style="width: 100%; height: 600px; border: 1px solid #ddd; border-radius: 8px;"></div>
                         </div>
+                        
+                        <!-- 保存分析数据按钮 -->
+                        <button id="save-network-cache-btn" class="btn btn-secondary" style="margin-top: 15px; display: none;">
+                            💾 保存分析数据
+                        </button>
                     </div>
                 </div>
 
@@ -370,20 +402,21 @@
                             </div>
 
                             <div class="config-group">
-                                <label for="ai-target-select">分析对象:</label>
-                                <select id="ai-target-select" class="config-input">
-                                    <option value="personal">个人分析</option>
-                                    <option value="group" selected>群体分析</option>
-                                    <option value="network">社交网络</option>
-                                </select>
+                                <label for="ai-output-tokens">输出Token限制（报告长度）:</label>
+                                <div class="slider-container">
+                                    <input type="range" id="ai-output-tokens" class="config-slider" min="500" max="16384" value="4000" step="100">
+                                    <span id="ai-output-tokens-value" class="slider-value">4000</span>
+                                </div>
+                                <small class="config-hint">控制AI生成报告的最大长度</small>
                             </div>
 
                             <div class="config-group">
-                                <label for="ai-token-limit">Token限制:</label>
+                                <label for="ai-context-tokens">输入Token预算（聊天采样）:</label>
                                 <div class="slider-container">
-                                    <input type="range" id="ai-token-limit" class="config-slider" min="1000" max="100000" value="5000" step="1000">
-                                    <span id="ai-token-limit-value" class="slider-value">5000</span>
+                                    <input type="range" id="ai-context-tokens" class="config-slider" min="5000" max="1000000" value="60000" step="5000">
+                                    <span id="ai-context-tokens-value" class="slider-value">60000</span>
                                 </div>
+                                <small class="config-hint">用于聊天记录稀疏采样的Token预算，越大越能包含更多聊天内容</small>
                             </div>
                         </div>
 
@@ -393,24 +426,6 @@
                             <button id="toggle-advanced" class="btn btn-secondary btn-small">展开高级设置</button>
                             
                             <div id="advanced-settings" style="display: none; margin-top: 20px;">
-                                <div class="config-group">
-                                    <label for="ai-api-base">API基础URL:</label>
-                                    <input type="text" id="ai-api-base" class="config-input" placeholder="https://api.openai.com/v1">
-                                </div>
-
-                                <div class="config-group">
-                                    <label for="ai-api-key">API密钥:</label>
-                                    <div class="password-input-group">
-                                        <input type="password" id="ai-api-key" class="config-input" placeholder="sk-..." autocomplete="off">
-                                        <button type="button" id="toggle-api-key" class="btn-icon btn-toggle-password" title="显示/隐藏">⊘</button>
-                                    </div>
-                                </div>
-
-                                <div class="config-group">
-                                    <label for="ai-model">模型名称:</label>
-                                    <input type="text" id="ai-model" class="config-input" placeholder="如gpt-4o-mini">
-                                </div>
-
                                 <div class="config-group">
                                     <label for="ai-temperature">温度 (Temperature):</label>
                                     <div class="slider-container">
@@ -429,17 +444,13 @@
                                     <small style="color: #999;">范围 0-1, 控制采样的多样性</small>
                                 </div>
 
-                                <div class="config-group">
-                                    <label for="ai-timeout">超时时间 (秒):</label>
-                                    <input type="number" id="ai-timeout" class="config-input" min="10" max="120" value="30">
+                                <div style="padding: 15px; background: #f5f5f5; border-radius: 6px; margin-bottom: 20px;">
                                 </div>
                             </div>
                         </div>
 
                         <!-- 配置操作 -->
                         <div class="config-actions" style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
-                            <button id="save-config-btn" class="btn btn-primary">💾 保存配置</button>
-                            <button id="reset-config-btn" class="btn btn-secondary">🔄 恢复默认</button>
                             <button id="test-config-btn" class="btn btn-secondary">🧪 测试连接</button>
                         </div>
 
@@ -448,26 +459,22 @@
                             <div id="config-status-message"></div>
                         </div>
 
-                        <!-- 生成总结部分 -->
-                        <div class="summary-section" style="margin-top: 40px; padding-top: 30px; border-top: 2px solid #eee;">
-                            <h3>🤖 生成AI总结</h3>
-                            <p style="color: #666; margin-bottom: 20px;">配置完成后，选择分析类型并生成创意风格的总结报告</p>
+                        <!-- 分析缓存管理 -->
+                        <div class="config-section" style="margin-top: 40px; padding-top: 30px; border-top: 2px solid #eee;">
+                            <h3>💾 分析数据缓存</h3>
+                            <p style="color: #666; margin-bottom: 10px;">保存分析结果以供快速生成AI总结，避免重复处理大型文件</p>
+                            <p style="color: #1890ff; font-size: 13px; margin-bottom: 20px;">
+                                💡 使用说明：先在「个人分析」「群体分析」或「社交网络」页面完成分析，点击「保存分析数据」，然后在下方点击「生成总结」
+                            </p>
                             
-                            <div class="summary-control">
-                                <div class="config-group">
-                                    <label for="summary-target-select">选择要总结的内容:</label>
-                                    <select id="summary-target-select" class="config-input">
-                                        <option value="personal">👤 个人分析</option>
-                                        <option value="group" selected>👥 群体 + 社交网络</option>
-                                    </select>
-                                </div>
-
-                                <div class="action-group" style="margin-top: 20px;">
-                                    <button id="generate-summary-btn" class="btn btn-primary" disabled>
-                                        ✨ 生成AI总结
-                                    </button>
-                                </div>
+                            <div id="analysis-cache-list">
+                                <p style="color: #999;">加载中...</p>
                             </div>
+                        </div>
+
+                        <!-- 进度和结果展示区域 -->
+                        <div class="summary-section" style="margin-top: 40px; padding-top: 30px; border-top: 2px solid #eee;">
+                            <h3>🤖 AI总结结果</h3>
 
                             <!-- 进度展示区域 -->
                             <div id="generation-progress-container" style="display: none; margin-top: 30px; padding: 20px; background: #f5f5f5; border-radius: 8px; border-left: 4px solid #4CAF50;">
@@ -668,6 +675,7 @@
 
     <!-- 模块化 JavaScript 文件 -->
     <script src="{{ url_for('static', filename='js/core.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/analysis-cache.js') }}"></script>
     <script src="{{ url_for('static', filename='js/file-handler.js') }}"></script>
     <script src="{{ url_for('static', filename='js/analyzer.js') }}"></script>
     <script src="{{ url_for('static', filename='js/ai-summary.js') }}"></script>

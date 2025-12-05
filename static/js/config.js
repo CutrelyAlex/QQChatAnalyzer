@@ -1,6 +1,7 @@
 /**
  * AI配置管理模块
  * 处理AI配置Tab中的所有交互和功能
+ * 注：API密钥、基础URL、模型等敏感配置统一通过.env文件管理
  */
 
 // ============ 配置对象 ============
@@ -8,20 +9,16 @@ const aiConfig = {
     // 基础配置
     enabled: localStorage.getItem('ai_enabled') !== 'false',
     target: localStorage.getItem('ai_target') || 'group',
-    tokenLimit: parseInt(localStorage.getItem('ai_token_limit') || '5000'),
+    outputTokens: parseInt(localStorage.getItem('ai_output_tokens') || '4000'),
+    contextTokens: parseInt(localStorage.getItem('ai_context_tokens') || '60000'),
     
-    // 高级配置 - 从env默认值初始化
-    apiBase: localStorage.getItem('ai_api_base') || '',
-    apiKey: localStorage.getItem('ai_api_key') || '',
-    model: localStorage.getItem('ai_model') || '',
+    // 生成参数（从localStorage读取）
     temperature: parseFloat(localStorage.getItem('ai_temperature') || '0.7'),
     topP: parseFloat(localStorage.getItem('ai_top_p') || '0.9'),
-    timeout: parseInt(localStorage.getItem('ai_timeout') || '30'),
-    
+
     // 环境配置的默认值
     envDefaults: {
         apiBase: 'https://api.openai.com/v1',
-        apiKey: '',
         model: 'gpt-4o-mini'
     }
 };
@@ -40,32 +37,17 @@ async function fetchEnvDefaults() {
         const data = await response.json();
         
         if (data.success) {
-            // 更新env默认值
-            const baseUrl = data.base_url || 'https://api.openai.com/v1';
-            const model = data.model || 'gpt-4o-mini';
-            const apiKey = data.api_key || '';
-            
-            aiConfig.envDefaults.apiBase = baseUrl;
-            aiConfig.envDefaults.model = model;
-            aiConfig.envDefaults.apiKey = apiKey;
-            
-            // 如果localStorage中没有保存的值，则使用env默认值
-            // 注意：即使localStorage为空字符串，我们也认为是已保存的
-            if (localStorage.getItem('ai_api_base') === null) {
-                aiConfig.apiBase = baseUrl;
+            // 从后端获取环境配置的默认值
+            if (data.apiBase) {
+                aiConfig.envDefaults.apiBase = data.apiBase;
             }
-            if (localStorage.getItem('ai_model') === null) {
-                aiConfig.model = model;
-            }
-            if (localStorage.getItem('ai_api_key') === null) {
-                aiConfig.apiKey = apiKey;
+            if (data.model) {
+                aiConfig.envDefaults.model = data.model;
             }
         }
     } catch (error) {
         console.warn('Failed to fetch env defaults:', error);
         // 使用硬编码的默认值作为后备
-        aiConfig.apiBase = aiConfig.apiBase || 'https://api.openai.com/v1';
-        aiConfig.model = aiConfig.model || 'gpt-4o-mini';
     }
 }
 
@@ -83,35 +65,23 @@ function initializeConfigUI() {
         targetSelect.value = aiConfig.target;
     }
     
-    // Token限制滑块
-    const tokenLimitSlider = document.getElementById('ai-token-limit');
-    const tokenLimitValue = document.getElementById('ai-token-limit-value');
-    if (tokenLimitSlider && tokenLimitValue) {
-        tokenLimitSlider.value = aiConfig.tokenLimit;
-        tokenLimitValue.textContent = aiConfig.tokenLimit.toLocaleString();
+    // 输出Token限制滑块
+    const outputTokensSlider = document.getElementById('ai-output-tokens');
+    const outputTokensValue = document.getElementById('ai-output-tokens-value');
+    if (outputTokensSlider && outputTokensValue) {
+        outputTokensSlider.value = aiConfig.outputTokens;
+        outputTokensValue.textContent = aiConfig.outputTokens.toLocaleString();
+    }
+    
+    // 输入Token预算滑块
+    const contextTokensSlider = document.getElementById('ai-context-tokens');
+    const contextTokensValue = document.getElementById('ai-context-tokens-value');
+    if (contextTokensSlider && contextTokensValue) {
+        contextTokensSlider.value = aiConfig.contextTokens;
+        contextTokensValue.textContent = aiConfig.contextTokens.toLocaleString();
     }
     
     // 高级配置初始化
-    const apiBase = document.getElementById('ai-api-base');
-    if (apiBase) {
-        apiBase.value = aiConfig.apiBase || aiConfig.envDefaults.apiBase;
-        apiBase.placeholder = '默认: ' + aiConfig.envDefaults.apiBase;
-    }
-    
-    const apiKey = document.getElementById('ai-api-key');
-    if (apiKey) {
-        apiKey.value = aiConfig.apiKey || aiConfig.envDefaults.apiKey;
-        if (aiConfig.envDefaults.apiKey && !aiConfig.apiKey) {
-            apiKey.placeholder = '使用环境变量配置的密钥';
-        }
-    }
-    
-    // 模型文本输入框
-    const modelInput = document.getElementById('ai-model');
-    if (modelInput) {
-        modelInput.value = aiConfig.model || aiConfig.envDefaults.model;
-        modelInput.placeholder = '默认: ' + aiConfig.envDefaults.model;
-    }
     
     const temperatureSlider = document.getElementById('ai-temperature');
     const temperatureValue = document.getElementById('ai-temperature-value');
@@ -125,11 +95,6 @@ function initializeConfigUI() {
     if (topPSlider && topPValue) {
         topPSlider.value = aiConfig.topP;
         topPValue.textContent = aiConfig.topP.toFixed(2);
-    }
-    
-    const timeoutInput = document.getElementById('ai-timeout');
-    if (timeoutInput) {
-        timeoutInput.value = aiConfig.timeout;
     }
 }
 
@@ -151,13 +116,23 @@ function attachEventListeners() {
         });
     }
     
-    // Token限制滑块事件
-    const tokenLimitSlider = document.getElementById('ai-token-limit');
-    const tokenLimitValue = document.getElementById('ai-token-limit-value');
-    if (tokenLimitSlider && tokenLimitValue) {
-        tokenLimitSlider.addEventListener('input', function() {
-            aiConfig.tokenLimit = parseInt(this.value);
-            tokenLimitValue.textContent = aiConfig.tokenLimit.toLocaleString();
+    // 输出Token限制滑块事件
+    const outputTokensSlider = document.getElementById('ai-output-tokens');
+    const outputTokensValue = document.getElementById('ai-output-tokens-value');
+    if (outputTokensSlider && outputTokensValue) {
+        outputTokensSlider.addEventListener('input', function() {
+            aiConfig.outputTokens = parseInt(this.value);
+            outputTokensValue.textContent = aiConfig.outputTokens.toLocaleString();
+        });
+    }
+    
+    // 输入Token预算滑块事件
+    const contextTokensSlider = document.getElementById('ai-context-tokens');
+    const contextTokensValue = document.getElementById('ai-context-tokens-value');
+    if (contextTokensSlider && contextTokensValue) {
+        contextTokensSlider.addEventListener('input', function() {
+            aiConfig.contextTokens = parseInt(this.value);
+            contextTokensValue.textContent = aiConfig.contextTokens.toLocaleString();
         });
     }
     
@@ -170,44 +145,6 @@ function attachEventListeners() {
             const isHidden = advancedSettings.style.display === 'none';
             advancedSettings.style.display = isHidden ? 'block' : 'none';
             toggleAdvancedBtn.textContent = isHidden ? '🔽 折叠高级设置' : '🔧 展开高级设置';
-        });
-    }
-    
-    // 高级配置事件
-    const apiBase = document.getElementById('ai-api-base');
-    if (apiBase) {
-        apiBase.addEventListener('change', function() {
-            aiConfig.apiBase = this.value;
-        });
-    }
-    
-    const apiKey = document.getElementById('ai-api-key');
-    if (apiKey) {
-        apiKey.addEventListener('change', function() {
-            aiConfig.apiKey = this.value;
-        });
-    }
-    
-    // 密钥显示/隐藏切换
-    const toggleApiKeyBtn = document.getElementById('toggle-api-key');
-    if (toggleApiKeyBtn && apiKey) {
-        toggleApiKeyBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            const isPassword = apiKey.type === 'password';
-            apiKey.type = isPassword ? 'text' : 'password';
-            toggleApiKeyBtn.textContent = isPassword ? 'X' : 'O';
-        });
-    }
-    
-    // 模型文本输入框事件
-    const modelInput = document.getElementById('ai-model');
-    if (modelInput) {
-        modelInput.addEventListener('change', function() {
-            aiConfig.model = this.value;
-        });
-        // 同时监听input事件以提供实时反馈
-        modelInput.addEventListener('input', function() {
-            aiConfig.model = this.value;
         });
     }
     
@@ -231,133 +168,10 @@ function attachEventListeners() {
         });
     }
     
-    // Timeout输入框
-    const timeoutInput = document.getElementById('ai-timeout');
-    if (timeoutInput) {
-        timeoutInput.addEventListener('change', function() {
-            aiConfig.timeout = parseInt(this.value);
-        });
-    }
-    
-    // 配置操作按钮
-    const saveBtn = document.getElementById('save-config-btn');
-    if (saveBtn) {
-        saveBtn.addEventListener('click', saveConfig);
-    }
-    
-    const resetBtn = document.getElementById('reset-config-btn');
-    if (resetBtn) {
-        resetBtn.addEventListener('click', resetConfig);
-    }
-    
-    const testBtn = document.getElementById('test-config-btn');
-    if (testBtn) {
-        testBtn.addEventListener('click', testConnection);
-    }
-}
-
-// ============ 配置操作函数 ============
-
-function saveConfig() {
-    // 保存到localStorage
-    localStorage.setItem('ai_enabled', aiConfig.enabled);
-    localStorage.setItem('ai_target', aiConfig.target);
-    localStorage.setItem('ai_token_limit', aiConfig.tokenLimit);
-    
-    // 高级设置
-    localStorage.setItem('ai_api_base', aiConfig.apiBase);
-    localStorage.setItem('ai_api_key', aiConfig.apiKey);
-    localStorage.setItem('ai_model', aiConfig.model);
-    localStorage.setItem('ai_temperature', aiConfig.temperature);
-    localStorage.setItem('ai_top_p', aiConfig.topP);
-    localStorage.setItem('ai_timeout', aiConfig.timeout);
-    
-    // 也更新appState（如果存在）
-    if (typeof appState !== 'undefined') {
-        appState.aiEnabled = aiConfig.enabled;
-        appState.aiMaxTokens = aiConfig.tokenLimit;
-    }
-    
-    showConfigStatus('✅ 配置已保存', 'success');
-}
-
-function resetConfig() {
-    // 确认重置
-    if (!confirm('确定要恢复默认设置吗？')) {
-        return;
-    }
-    
-    // 重置配置对象到env默认值
-    aiConfig.enabled = true;
-    aiConfig.target = 'group';
-    aiConfig.tokenLimit = 5000;
-    aiConfig.apiBase = aiConfig.envDefaults.apiBase;
-    aiConfig.apiKey = aiConfig.envDefaults.apiKey;
-    aiConfig.model = aiConfig.envDefaults.model;
-    aiConfig.temperature = 0.7;
-    aiConfig.topP = 0.9;
-    aiConfig.timeout = 30;
-    
-    // 清除localStorage
-    localStorage.removeItem('ai_enabled');
-    localStorage.removeItem('ai_target');
-    localStorage.removeItem('ai_token_limit');
-    localStorage.removeItem('ai_api_base');
-    localStorage.removeItem('ai_api_key');
-    localStorage.removeItem('ai_model');
-    localStorage.removeItem('ai_temperature');
-    localStorage.removeItem('ai_top_p');
-    localStorage.removeItem('ai_timeout');
-    
-    // 刷新UI
-    initializeConfigUI();
-    
-    showConfigStatus('🔄 已恢复默认设置', 'info');
-}
-
-async function testConnection() {
-    // 验证必填字段
-    if (!aiConfig.apiKey) {
-        showConfigStatus('❌ 请先填写API密钥', 'error');
-        return;
-    }
-    
-    if (!aiConfig.apiBase) {
-        showConfigStatus('❌ 请先填写API基础URL', 'error');
-        return;
-    }
-    
-    const testBtn = document.getElementById('test-config-btn');
-    const originalText = testBtn.textContent;
-    testBtn.disabled = true;
-    testBtn.textContent = '⏳ 测试中...';
-    
-    try {
-        const response = await fetch('/api/test-ai-connection', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                api_base: aiConfig.apiBase,
-                api_key: aiConfig.apiKey,
-                model: aiConfig.model,
-                timeout: aiConfig.timeout
-            })
-        });
-        
-        const data = await response.json();
-        
-        if (response.ok && data.success) {
-            showConfigStatus('✅ 连接测试成功！', 'success');
-        } else {
-            showConfigStatus(`❌ 连接失败: ${data.error || '未知错误'}`, 'error');
-        }
-    } catch (error) {
-        showConfigStatus(`❌ 测试出错: ${error.message}`, 'error');
-    } finally {
-        testBtn.disabled = false;
-        testBtn.textContent = originalText;
+    // 测试连接按钮
+    const testConfigBtn = document.getElementById('test-config-btn');
+    if (testConfigBtn) {
+        testConfigBtn.addEventListener('click', testAIConnection);
     }
 }
 
@@ -388,10 +202,50 @@ function showConfigStatus(message, type = 'info') {
     }, 5000);
 }
 
-// 导出全局访问
-window.saveConfig = saveConfig;
-window.resetConfig = resetConfig;
-window.testConnection = testConnection;
+// ============ AI连接测试 ============
+
+async function testAIConnection() {
+    const testBtn = document.getElementById('test-config-btn');
+    if (!testBtn) return;
+    
+    // 禁用按钮并显示加载状态
+    testBtn.disabled = true;
+    const originalText = testBtn.textContent;
+    testBtn.textContent = '⏳ 测试中...';
+    
+    try {
+        // 调用后端的测试连接端点
+        const response = await fetch('/api/ai/status');
+        const data = await response.json();
+        
+        if (data.success && data.available) {
+            // 连接成功
+            showConfigStatus(`✅ AI服务连接成功！\n模型: ${data.model}\nAPI基础URL: ${data.apiBase}`, 'success');
+            testBtn.textContent = '✅ ' + originalText;
+        } else if (data.success && !data.available) {
+            // API未配置
+            showConfigStatus('❌ API密钥未配置，请检查 .env 文件中的 OPENAI_API_KEY', 'error');
+            testBtn.textContent = '❌ ' + originalText;
+        } else {
+            // 其他错误
+            showConfigStatus(`❌ 连接失败: ${data.error || '未知错误'}`, 'error');
+            testBtn.textContent = '❌ ' + originalText;
+        }
+    } catch (error) {
+        // 网络错误
+        console.error('测试连接失败:', error);
+        showConfigStatus(`❌ 连接失败: ${error.message}`, 'error');
+        testBtn.textContent = '❌ ' + originalText;
+    } finally {
+        // 3秒后恢复按钮状态
+        setTimeout(() => {
+            testBtn.disabled = false;
+            testBtn.textContent = originalText;
+        }, 3000);
+    }
+}
+
+
 window.aiConfig = aiConfig;
 
 // ============ AI总结生成流程 ============
@@ -473,11 +327,6 @@ async function startSummaryGeneration() {
         return;
     }
     
-    if (!aiConfig.apiKey) {
-        showConfigStatus('❌ 请先配置API密钥', 'error');
-        return;
-    }
-    
     if (!appState.currentFile) {
         showConfigStatus('❌ 请先加载文件', 'error');
         return;
@@ -506,12 +355,10 @@ async function startSummaryGeneration() {
         const requestData = {
             type: targetType,
             filename: appState.currentFile,
-            max_tokens: aiConfig.tokenLimit,
-            ai_config: {
-                api_key: aiConfig.apiKey,
-                api_base: aiConfig.apiBase,
-                model: aiConfig.model
-            }
+            max_tokens: aiConfig.outputTokens,
+            context_budget: aiConfig.contextTokens,
+            temperature: aiConfig.temperature,
+            top_p: aiConfig.topP
         };
         
         // 如果是个人总结，检查QQ

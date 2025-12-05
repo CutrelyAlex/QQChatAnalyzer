@@ -1,6 +1,6 @@
 /**
  * QQ聊天记录分析系统 - AI总结模块
- * AI生成摘要和报告功能
+ * AI生成摘要和报告功能（支持流式输出）
  */
 
 // ============ AI总结 ============
@@ -19,16 +19,15 @@ async function generateSummary(type) {
         const requestData = {
             type: type,
             filename: appState.currentFile,
-            max_tokens: appState.aiMaxTokens
+            max_tokens: appState.aiOutputTokens,          // 输出Token（报告长度）
+            context_budget: appState.aiContextTokens       // 输入Token预算（聊天采样）
         };
         
-        // 添加AI配置（如果已初始化）
-        if (typeof aiConfig !== 'undefined') {
-            requestData.ai_config = {
-                api_key: aiConfig.api_key || '',
-                api_base: aiConfig.api_base || '',
-                model: aiConfig.model || ''
-            };
+        // 检查是否选择了缓存ID
+        const selectedCacheId = sessionStorage.getItem('selected_cache_id');
+        if (selectedCacheId) {
+            requestData.cache_id = selectedCacheId;
+            console.log('使用缓存ID:', selectedCacheId);
         }
         
         // 如果是个人总结，需要QQ号
@@ -41,22 +40,118 @@ async function generateSummary(type) {
             requestData.qq = qq;
         }
         
-        const response = await fetch(`${API_BASE}/ai/summary`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestData)
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            displaySummary(type, data);
-        } else {
-            showSummaryError(data.error || '生成失败');
+        // 尝试使用流式API
+        try {
+            await generateSummaryStream(type, requestData);
+        } catch (streamError) {
+            console.warn('流式API失败，回退到普通API:', streamError);
+            // 回退到普通API
+            await generateSummaryFallback(type, requestData);
         }
+        
     } catch (error) {
         console.error('生成总结失败:', error);
         showSummaryError('生成总结失败: ' + error.message);
+    }
+}
+
+async function generateSummaryStream(type, requestData) {
+    const typeNames = {
+        'personal': '📱 个人年度报告',
+        'group': '👥 群体 + 社交网络融合报告',
+        'network': '👥 群体 + 社交网络融合报告'
+    };
+    
+    // 准备显示区域
+    document.getElementById('summary-title').textContent = typeNames[type] || 'AI 总结';
+    document.getElementById('summary-text').innerHTML = '<span class="streaming-cursor">▌</span>';
+    document.getElementById('summary-text').dataset.rawContent = '';
+    document.getElementById('summary-loading').style.display = 'none';
+    document.getElementById('summary-error').style.display = 'none';
+    document.getElementById('summary-content').style.display = 'block';
+    document.getElementById('summary-tokens').textContent = '生成中...';
+    document.getElementById('summary-time').textContent = new Date().toLocaleTimeString();
+    
+    const response = await fetch(`${API_BASE}/ai/summary/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestData)
+    });
+    
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || '请求失败');
+    }
+    
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let fullContent = '';
+    let model = '';
+    
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+        
+        for (const line of lines) {
+            if (line.startsWith('data: ')) {
+                try {
+                    const data = JSON.parse(line.slice(6));
+                    
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+                    
+                    if (data.event === 'start') {
+                        model = data.model || '';
+                        document.getElementById('summary-model').textContent = model;
+                    } else if (data.content) {
+                        fullContent += data.content;
+                        // 实时渲染 Markdown
+                        document.getElementById('summary-text').innerHTML = 
+                            renderMarkdown(fullContent) + '<span class="streaming-cursor">▌</span>';
+                        // 自动滚动到底部
+                        const textEl = document.getElementById('summary-text');
+                        textEl.scrollTop = textEl.scrollHeight;
+                    } else if (data.event === 'done') {
+                        // 完成，移除光标
+                        document.getElementById('summary-text').innerHTML = renderMarkdown(fullContent);
+                        document.getElementById('summary-text').dataset.rawContent = fullContent;
+                        document.getElementById('summary-tokens').textContent = 
+                            `约 ${Math.round(fullContent.length / 1.5)} tokens`;
+                    }
+                } catch (e) {
+                    if (e.message !== 'Unexpected end of JSON input') {
+                        console.error('解析SSE数据失败:', e);
+                    }
+                }
+            }
+        }
+    }
+    
+    // 确保最终状态正确
+    if (fullContent) {
+        document.getElementById('summary-text').innerHTML = renderMarkdown(fullContent);
+        document.getElementById('summary-text').dataset.rawContent = fullContent;
+    }
+}
+
+async function generateSummaryFallback(type, requestData) {
+    // 原来的非流式实现作为回退
+    const response = await fetch(`${API_BASE}/ai/summary`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestData)
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+        displaySummary(type, data);
+    } else {
+        showSummaryError(data.error || '生成失败');
     }
 }
 

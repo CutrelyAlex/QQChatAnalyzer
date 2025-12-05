@@ -478,6 +478,170 @@ html, body {
 }
 
 /* ======================================
+   时段分析样式
+   ====================================== */
+
+.hourly-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 15px;
+}
+
+@media (max-width: 1000px) {
+    .hourly-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 600px) {
+    .hourly-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.time-group {
+    background: var(--bg-light);
+    border-radius: var(--border-radius);
+    overflow: hidden;
+}
+
+.time-group-header {
+    padding: 10px 15px;
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-color);
+}
+
+.time-group-items {
+    padding: 10px;
+}
+
+.hourly-item {
+    display: flex;
+    align-items: center;
+    padding: 6px 10px;
+    margin: 4px 0;
+    background: white;
+    border-radius: 6px;
+    font-size: 13px;
+    transition: all 0.2s ease;
+}
+
+.hourly-item:hover {
+    background: #e6f7ff;
+    transform: translateX(3px);
+}
+
+.hourly-item.inactive {
+    opacity: 0.5;
+}
+
+.hourly-item .hour-label {
+    font-weight: 600;
+    color: var(--primary-color);
+    min-width: 50px;
+}
+
+.hourly-item .user-name {
+    flex: 1;
+    color: var(--text-color);
+    margin: 0 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.hourly-item .msg-count {
+    color: var(--text-tertiary);
+    font-size: 12px;
+    background: #f0f0f0;
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+
+/* 每周各日分析 */
+.weekday-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 12px;
+}
+
+@media (max-width: 900px) {
+    .weekday-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+@media (max-width: 600px) {
+    .weekday-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+.weekday-card {
+    background: white;
+    border-radius: var(--border-radius);
+    padding: 15px;
+    text-align: center;
+    transition: all 0.2s ease;
+    box-shadow: var(--box-shadow);
+}
+
+.weekday-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--box-shadow-lg);
+}
+
+.weekday-card.inactive {
+    opacity: 0.5;
+}
+
+.weekday-name {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: var(--text-color);
+}
+
+.weekday-user {
+    font-size: 13px;
+    color: var(--primary-color);
+    margin-bottom: 6px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.weekday-count {
+    font-size: 12px;
+    color: var(--text-tertiary);
+}
+
+/* 星期几总计样式 */
+.weekday-summary {
+    display: flex;
+    justify-content: center;
+    gap: 30px;
+    padding: 15px;
+    margin-bottom: 15px;
+    background: linear-gradient(135deg, #f5f7fa 0%, #e4e8eb 100%);
+    border-radius: var(--border-radius);
+}
+
+.summary-item {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.summary-item.max strong {
+    color: #ff6b6b;
+}
+
+.summary-item.min strong {
+    color: #74c0fc;
+}
+
+/* ======================================
    Token管理面板
    ====================================== */
 
@@ -651,6 +815,19 @@ html, body {
     background: linear-gradient(135deg, #fafafa 0%, #f0f5ff 100%);
     border-radius: var(--border-radius);
     border: 1px solid #e8e8e8;
+}
+
+/* 流式输出光标动画 */
+.streaming-cursor {
+    display: inline-block;
+    animation: blink 0.7s infinite;
+    color: var(--primary-color);
+    font-weight: bold;
+}
+
+@keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
 }
 
 @keyframes slideUp {
@@ -1767,4 +1944,218 @@ html, body {
     color: #d32f2f;
     font-size: 13px;
     line-height: 1.6;
+}
+
+/* ======================================
+   分析缓存管理
+   ====================================== */
+
+#analysis-cache-list {
+    margin-top: 15px;
+}
+
+.cache-items {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.cache-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    transition: all 0.3s ease;
+}
+
+.cache-item:hover {
+    background: #fafafa;
+    border-color: var(--primary-color);
+    box-shadow: var(--box-shadow);
+}
+
+.cache-item.selected {
+    background: #e6f7ff;
+    border-color: var(--primary-color);
+}
+
+.cache-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.cache-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-color);
+    margin-bottom: 6px;
+    word-break: break-word;
+}
+
+.cache-meta {
+    display: flex;
+    gap: 15px;
+    font-size: 12px;
+    color: var(--text-tertiary);
+}
+
+.cache-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: 12px;
+    flex-shrink: 0;
+}
+
+.btn-small {
+    padding: 6px 12px;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.btn-secondary {
+    background-color: #fafafa;
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover {
+    background-color: #f0f0f0;
+    border-color: var(--secondary-color);
+}
+
+.btn-danger {
+    background-color: white;
+    color: var(--danger-color);
+    border: 1px solid var(--danger-color);
+}
+
+.btn-danger:hover {
+    background-color: #fff2f0;
+    border-color: var(--danger-color);
+}
+
+/* 缓存类型徽章 */
+.cache-type-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 500;
+    margin-right: 8px;
+}
+
+.cache-type-badge.type-personal {
+    background: #e6f7ff;
+    color: #1890ff;
+    border: 1px solid #91d5ff;
+}
+
+.cache-type-badge.type-group {
+    background: #f6ffed;
+    color: #52c41a;
+    border: 1px solid #b7eb8f;
+}
+
+.cache-type-badge.type-network {
+    background: #f9f0ff;
+    color: #722ed1;
+    border: 1px solid #d3adf7;
+}
+
+.cache-type-badge.type-merged {
+    background: linear-gradient(135deg, #f6ffed 0%, #f9f0ff 100%);
+    color: #531dab;
+    border: 1px solid #b37feb;
+}
+
+/* 缓存分组样式 */
+.cache-file-group {
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    margin-bottom: 16px;
+    overflow: hidden;
+    box-shadow: var(--box-shadow);
+}
+
+.cache-file-header {
+    background: linear-gradient(135deg, #f5f5f5 0%, #fafafa 100%);
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-color);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.cache-file-header::before {
+    content: "📁";
+}
+
+.cache-file-items {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* 分组内的缓存项 */
+.cache-file-group .cache-item {
+    margin: 0;
+    border-radius: 6px;
+}
+
+/* 合并分析选项样式 */
+.merged-option {
+    background: linear-gradient(135deg, #f6ffed 0%, #f9f0ff 100%);
+    border: 2px dashed var(--secondary-color);
+    border-radius: var(--border-radius);
+    padding: 16px;
+    margin-top: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.3s ease;
+}
+
+.merged-option:hover {
+    border-style: solid;
+    background: linear-gradient(135deg, #d9f7be 0%, #efdbff 100%);
+    box-shadow: var(--box-shadow);
+}
+
+.merged-option .cache-info {
+    flex: 1;
+}
+
+.merged-option .cache-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: #531dab;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.merged-option .cache-name::before {
+    content: "✨";
+}
+
+.merged-option .cache-meta {
+    margin-top: 6px;
+    color: var(--text-secondary);
+}
+
+.merged-option .btn-primary {
+    background: linear-gradient(135deg, #722ed1 0%, #1890ff 100%);
+    border: none;
+}
+
+.merged-option .btn-primary:hover {
+    background: linear-gradient(135deg, #9254de 0%, #40a9ff 100%);
 }

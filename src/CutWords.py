@@ -17,6 +17,30 @@ _AT_PATTERN = AT_SYMBOL_PATTERN
 # 缓存昵称集合
 _nickname_cache = {}
 
+def build_qq_nickname_map(chat_messages):
+    """
+    从聊天记录构建 QQ-昵称映射
+    
+    Args:
+        chat_messages: 聊天消息列表，每条为 {'sender': 昵称, 'qq': QQ号, ...} 的字典
+    
+    Returns:
+        dict: {昵称: QQ号, ...} 的映射
+    """
+    qq_nickname_map = {}
+    if not chat_messages:
+        return qq_nickname_map
+    
+    for msg in chat_messages:
+        if isinstance(msg, dict) and 'sender' in msg and 'qq' in msg:
+            nickname = msg.get('sender', '').strip()
+            qq = msg.get('qq', '').strip()
+            if nickname and qq:
+                qq_nickname_map[nickname] = qq
+    
+    return qq_nickname_map
+
+
 def cut_words(lines_to_process : list, top_words_num: int, nicknames: list = None):
     """提取热词并返回词频统计
     
@@ -29,19 +53,17 @@ def cut_words(lines_to_process : list, top_words_num: int, nicknames: list = Non
         (word_counts, words_top) - 完整词频统计和前N个热词
     """
     words = []
-    has_mention = False  # 标记是否需要检查@符号
     
-    # 预处理昵称列表
-    nickname_id = id(nicknames)  # 使用对象ID作为缓存键
-    if nicknames and nickname_id not in _nickname_cache:
-        _nickname_cache[nickname_id] = sorted(set(n for n in nicknames if n), key=len, reverse=True)
-    sorted_nicknames = _nickname_cache.get(nickname_id) if nicknames else None
+    # 预处理昵称列表：去重并按长度降序排序
+    sorted_nicknames = []
+    if nicknames:
+        sorted_nicknames = sorted(set(n.strip() for n in nicknames if n and n.strip()), 
+                                 key=len, reverse=True)
     
     for s in lines_to_process:
-        # 只在有@符号时才替换昵称
+        # 只在有@符号且有昵称时才替换昵称
         if sorted_nicknames and '@' in s:
-            s = replace_nicknames_fast(s, sorted_nicknames)
-            has_mention = True
+            s = remove_nicknames_with_at(s, sorted_nicknames)
         
         # 去除 @提及 和污染词汇
         s_cleaned = remove_mentions_fast(s)
@@ -57,21 +79,56 @@ def cut_words(lines_to_process : list, top_words_num: int, nicknames: list = Non
     return word_counts, words_top
 
 
-def replace_nicknames_fast(text, sorted_nicknames):
+def remove_nicknames_with_at(text, sorted_nicknames):
     """
-    快速替换昵称
+    移除文本中与@符号相关的昵称
+    
+    策略：
+    1. 首先扫描是否有@符号，没有则直接返回
+    2. 按长度降序处理昵称（长昵称优先）
+    3. 移除所有 @昵称 的格式（可能跟随空格或标点）
+    4. 移除所有 昵称@ 的格式（@ 在昵称后面）
     
     Args:
         text: 输入文本
         sorted_nicknames: 已按长度降序排序的昵称列表
     
     Returns:
-        替换后的文本
+        处理后的文本
     """
+    if not sorted_nicknames or '@' not in text:
+        return text
+    
+    result = text
+    
     for nickname in sorted_nicknames:
-        if nickname in text:
-            text = text.replace(nickname, ' ')
-    return text
+        if not nickname:
+            continue
+        
+        # 转义正则表达式特殊字符
+        escaped_nickname = re.escape(nickname)
+        
+        # 1. 移除 @昵称 + 空格的格式
+        # 匹配 @昵称 后跟空格、标点、括号或结尾
+        result = re.sub(r'@\s*' + escaped_nickname + r'(?=[\s\.\,，。！？\:\：\)\）\]\】\(（@]|$)', ' ', result)
+        
+        # 2. 移除 昵称@ 的格式
+        result = re.sub(escaped_nickname + r'@', ' ', result)
+        
+        # 3. 移除 @昵称）的格式（中文括号）
+        result = re.sub(r'@' + escaped_nickname + r'[\）]', ' ', result)
+        
+        # 4. 移除末尾多余的括号（当@昵称被移除后留下的括号）
+        result = re.sub(r'[\）]\s*$', '', result)
+    
+    return result
+
+
+def replace_nicknames_fast(text, sorted_nicknames):
+    """
+    快速替换昵称 (已弃用，使用 remove_nicknames_with_at 替代)
+    """
+    return remove_nicknames_with_at(text, sorted_nicknames)
 
 
 def remove_mentions_fast(text):
@@ -114,14 +171,8 @@ def replace_nicknames(text, nicknames):
     # 按长度降序排序昵称
     sorted_nicknames = sorted(set(nicknames), key=len, reverse=True)
     
-    # 遍历每个昵称，如果出现在文本中，将其替换为空格
-    for nickname in sorted_nicknames:
-        if nickname and len(nickname) > 0:
-            # 只有文本中同时有@和昵称时，才替换该昵称
-            if nickname in text:
-                text = text.replace(nickname, ' ')
-    
-    return text
+    # 使用改进的函数
+    return remove_nicknames_with_at(text, sorted_nicknames)
 
 
 def remove_mentions(text):

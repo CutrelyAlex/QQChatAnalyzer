@@ -44,7 +44,17 @@ async function analyzePersonal() {
         
         // 存储分析数据供后续使用
         appState.analysisData.personal = stats;
-        document.getElementById('personal-summary-btn').disabled = !appState.aiEnabled;
+        
+        // 更新UI（如果相关元素存在）
+        const summaryBtn = document.getElementById('personal-summary-btn');
+        if (summaryBtn) {
+            summaryBtn.disabled = !appState.aiEnabled;
+        }
+        
+        // 显示保存按钮
+        if (typeof showSaveButton === 'function') {
+            showSaveButton('personal');
+        }
         
         hideProgress('personal', true);
         showStatusMessage('success', `成功分析 ${stats.nickname}(${stats.qq}) 的数据`);
@@ -134,6 +144,22 @@ async function analyzeGroup() {
                 renderHotWords('group-hot-words', stats.hot_words);
             }
             
+            // 渲染新增的时段分析
+            if (stats.hourly_top_users) {
+                renderHourlyTopUsers(stats.hourly_top_users);
+            }
+            if (stats.weekday_top_users) {
+                renderWeekdayTopUsers(stats.weekday_top_users);
+            }
+            if (stats.weekday_totals) {
+                renderWeekdayTotals(stats.weekday_totals);
+            }
+            
+            // 显示保存按钮
+            if (typeof showSaveButton === 'function') {
+                showSaveButton('group');
+            }
+            
             hideProgress('group', true);
             showStatusMessage('success', '群体分析完成');
         } else {
@@ -217,6 +243,11 @@ async function analyzeNetwork() {
             // 渲染网络图
             renderNetworkGraph(stats.nodes, stats.edges);
             
+            // 显示保存按钮
+            if (typeof showSaveButton === 'function') {
+                showSaveButton('network');
+            }
+            
             hideProgress('network', true);
             
             // 显示详细信息
@@ -260,4 +291,194 @@ function getPeakTimeLabel(timeDistribution) {
     }
     
     return times[maxTime] || '未知';
+}
+
+// ============ 新增：时段分析渲染函数 ============
+
+/**
+ * 渲染每小时最活跃用户
+ */
+function renderHourlyTopUsers(hourlyTopUsers) {
+    const container = document.getElementById('hourly-top-users');
+    if (!container) return;
+    
+    console.log('renderHourlyTopUsers data:', hourlyTopUsers);
+    
+    // 按时段分组：凌晨(0-6)、早上(6-12)、下午(12-18)、晚上(18-24)
+    const timeGroups = [
+        { name: '🌙 凌晨', range: [0, 1, 2, 3, 4, 5], color: '#9775fa' },
+        { name: '🌅 早上', range: [6, 7, 8, 9, 10, 11], color: '#ffa94d' },
+        { name: '☀️ 下午', range: [12, 13, 14, 15, 16, 17], color: '#69db7c' },
+        { name: '🌆 晚上', range: [18, 19, 20, 21, 22, 23], color: '#74c0fc' }
+    ];
+    
+    let html = '<div class="hourly-grid">';
+    
+    for (const group of timeGroups) {
+        html += `<div class="time-group">
+            <div class="time-group-header" style="background: ${group.color}20; border-left: 3px solid ${group.color};">
+                ${group.name}
+            </div>
+            <div class="time-group-items">`;
+        
+        for (const hour of group.range) {
+            // JSON序列化后整数键变成字符串，需要用字符串访问
+            const userData = hourlyTopUsers[hour] || hourlyTopUsers[hour.toString()];
+            if (userData) {
+                html += `
+                    <div class="hourly-item">
+                        <span class="hour-label">${hour.toString().padStart(2, '0')}:00</span>
+                        <span class="user-name" title="QQ: ${userData.qq}">${userData.name}</span>
+                        <span class="msg-count">${userData.count}条</span>
+                    </div>`;
+            } else {
+                html += `
+                    <div class="hourly-item inactive">
+                        <span class="hour-label">${hour.toString().padStart(2, '0')}:00</span>
+                        <span class="user-name">无数据</span>
+                    </div>`;
+            }
+        }
+        
+        html += `</div></div>`;
+    }
+    
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+/**
+ * 渲染每周各日最活跃用户
+ */
+function renderWeekdayTopUsers(weekdayTopUsers) {
+    const container = document.getElementById('weekday-top-users');
+    if (!container) return;
+    
+    console.log('renderWeekdayTopUsers data:', weekdayTopUsers);
+    
+    const weekdayEmojis = ['📅', '📆', '🗓️', '📋', '🎉', '🌈', '☀️'];
+    const weekdayColors = ['#ff6b6b', '#ffa94d', '#ffd43b', '#69db7c', '#38d9a9', '#74c0fc', '#9775fa'];
+    const weekdayNames = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+    
+    let html = '<div class="weekday-grid">';
+    
+    for (let i = 0; i < 7; i++) {
+        // JSON序列化后整数键变成字符串，需要用字符串访问
+        const userData = weekdayTopUsers[i] || weekdayTopUsers[i.toString()];
+        const weekdayName = userData?.weekday_name || weekdayNames[i];
+        const emoji = weekdayEmojis[i];
+        const color = weekdayColors[i];
+        
+        if (userData) {
+            html += `
+                <div class="weekday-card" style="border-top: 3px solid ${color};">
+                    <div class="weekday-name">${emoji} ${weekdayName}</div>
+                    <div class="weekday-user" title="QQ: ${userData.qq}">${userData.name}</div>
+                    <div class="weekday-count">${userData.count} 条消息</div>
+                </div>`;
+        } else {
+            html += `
+                <div class="weekday-card inactive">
+                    <div class="weekday-name">${emoji} ${weekdayName}</div>
+                    <div class="weekday-user">无数据</div>
+                </div>`;
+        }
+    }
+    
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+/**
+ * 渲染全年各星期几消息统计（柱状图）
+ */
+function renderWeekdayTotals(weekdayTotals) {
+    const container = document.getElementById('weekday-totals');
+    const canvas = document.getElementById('weekday-totals-chart');
+    if (!canvas) return;
+    
+    console.log('renderWeekdayTotals data:', weekdayTotals);
+    
+    const weekdayNames = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+    
+    // 准备数据
+    const labels = [];
+    const data = [];
+    const colors = ['#ff6b6b', '#ffa94d', '#ffd43b', '#69db7c', '#38d9a9', '#74c0fc', '#9775fa'];
+    
+    for (let i = 0; i < 7; i++) {
+        // JSON序列化后整数键变成字符串，需要用字符串访问
+        const dayData = weekdayTotals[i] || weekdayTotals[i.toString()];
+        labels.push(dayData?.weekday_name || weekdayNames[i]);
+        data.push(dayData?.count || 0);
+    }
+    
+    // 找出最高和最低
+    const maxCount = Math.max(...data);
+    const minCount = Math.min(...data.filter(c => c > 0));
+    const maxIdx = data.indexOf(maxCount);
+    const minIdx = data.indexOf(minCount);
+    
+    // 显示文字说明
+    if (container) {
+        const maxDay = labels[maxIdx];
+        const minDay = labels[minIdx];
+        container.innerHTML = `
+            <div class="weekday-summary">
+                <span class="summary-item max">🔥 最活跃: <strong>${maxDay}</strong> (${maxCount.toLocaleString()}条)</span>
+                <span class="summary-item min">💤 最安静: <strong>${minDay}</strong> (${minCount.toLocaleString()}条)</span>
+            </div>
+        `;
+    }
+    
+    // 销毁旧图表
+    if (window.weekdayTotalsChart) {
+        window.weekdayTotalsChart.destroy();
+    }
+    
+    // 绘制柱状图
+    const ctx = canvas.getContext('2d');
+    window.weekdayTotalsChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: '消息数量',
+                data: data,
+                backgroundColor: colors,
+                borderColor: colors.map(c => c),
+                borderWidth: 1,
+                borderRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: {
+                    display: false
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `${context.parsed.y.toLocaleString()} 条消息`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            if (value >= 1000) {
+                                return (value / 1000).toFixed(1) + 'k';
+                            }
+                            return value;
+                        }
+                    }
+                }
+            }
+        }
+    });
 }

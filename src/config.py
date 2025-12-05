@@ -32,6 +32,8 @@ class Config:
     DEFAULT_MAX_TOKENS = int(os.getenv('DEFAULT_MAX_TOKENS', 200000))
     RESERVED_TOKENS = int(os.getenv('RESERVED_TOKENS', 500))
     DEFAULT_RETENTION_RATIO = float(os.getenv('DEFAULT_RETENTION_RATIO', 0.8))
+    DEFAULT_CONTEXT_BUDGET = int(os.getenv('DEFAULT_CONTEXT_BUDGET', 60000))
+    DEFAULT_OUTPUT_TOKENS = int(os.getenv('DEFAULT_OUTPUT_TOKENS', 4000))
     
     @classmethod
     def validate_config(cls):
@@ -72,6 +74,8 @@ class Config:
         print(f"💾 最大文件: {cls.MAX_FILE_SIZE_MB}MB")
         print(f"👥 最大成员数: {cls.MAX_MEMBERS}")
         print(f"📊 Token限制: {cls.DEFAULT_MAX_TOKENS} (预留: {cls.RESERVED_TOKENS})")
+        print(f"💬 Context预算: {cls.DEFAULT_CONTEXT_BUDGET} tokens")
+        print(f"📝 输出长度: {cls.DEFAULT_OUTPUT_TOKENS} tokens")
         
         # 验证并显示问题
         issues = cls.validate_config()

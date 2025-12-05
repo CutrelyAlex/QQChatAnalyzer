@@ -54,6 +54,11 @@ class GroupStats:
         # 7*24热力图
         self.heatmap = {}           # {day*24+hour: count}
         
+        # 新增：时段和日期统计分析
+        self.hourly_top_users = {}     # {hour: {'qq': qq, 'name': name, 'count': count}} 每小时最活跃用户
+        self.weekday_top_users = {}    # {weekday: {'qq': qq, 'name': name, 'count': count}} 每日最活跃用户 (0=周一)
+        self.weekday_totals = {}       # {weekday: count} 全年各星期几的总消息数 (0=周一)
+        
     def to_dict(self) -> Dict:
         """转换为字典格式"""
         return {
@@ -75,7 +80,11 @@ class GroupStats:
             # 转换热词格式: [(word, count)] -> [{word, count}]
             'hot_words': [{'word': w, 'count': c} for w, c in self.hot_words[:20]],
             'hot_emojis': [{'emoji': e, 'count': c} for e, c in self.hot_emojis[:10]],
-            'heatmap': self.heatmap
+            'heatmap': self.heatmap,
+            # 新增时段分析
+            'hourly_top_users': self.hourly_top_users,
+            'weekday_top_users': self.weekday_top_users,
+            'weekday_totals': self.weekday_totals
         }
 
 
@@ -149,6 +158,7 @@ class GroupAnalyzer:
         self._analyze_message_types()
         self._extract_hot_content()
         self._build_heatmap()
+        self._analyze_time_based_top_users()  # 新增：时段和日期统计
 
         return self.stats   
     
@@ -320,3 +330,61 @@ class GroupAnalyzer:
         
         # 转换为标准格式：{day*24+hour: count}
         self.stats.heatmap = dict(heatmap)
+    
+    def _analyze_time_based_top_users(self) -> None:
+        """分析每个时段和每天最活跃的用户，以及全年各星期几的总消息数"""
+        # 统计每小时每人的消息数: {hour: {qq: count}}
+        hourly_user_count = defaultdict(lambda: defaultdict(int))
+        # 统计每个星期几每人的消息数: {weekday: {qq: count}}
+        weekday_user_count = defaultdict(lambda: defaultdict(int))
+        # 统计全年各星期几的总消息数
+        weekday_totals = defaultdict(int)
+        
+        for line_data in self.lines_data:
+            dt = parse_timestamp(line_data.timepat)
+            if dt and line_data.qq:
+                hour = dt.hour
+                weekday = dt.weekday()  # 0=周一, 6=周日
+                qq = line_data.qq
+                
+                hourly_user_count[hour][qq] += 1
+                weekday_user_count[weekday][qq] += 1
+                weekday_totals[weekday] += 1
+        
+        # 找出每小时最活跃的用户
+        hourly_top_users = {}
+        for hour in range(24):
+            if hourly_user_count[hour]:
+                # 找出消息最多的用户
+                top_qq = max(hourly_user_count[hour].items(), key=lambda x: x[1])
+                hourly_top_users[hour] = {
+                    'qq': top_qq[0],
+                    'name': self.qq_to_name.get(top_qq[0], top_qq[0]),
+                    'count': top_qq[1]
+                }
+        
+        # 找出每个星期几最活跃的用户
+        weekday_names = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+        weekday_top_users = {}
+        for weekday in range(7):
+            if weekday_user_count[weekday]:
+                top_qq = max(weekday_user_count[weekday].items(), key=lambda x: x[1])
+                weekday_top_users[weekday] = {
+                    'weekday_name': weekday_names[weekday],
+                    'qq': top_qq[0],
+                    'name': self.qq_to_name.get(top_qq[0], top_qq[0]),
+                    'count': top_qq[1]
+                }
+        
+        # 格式化星期几总消息数
+        weekday_totals_formatted = {
+            weekday: {
+                'weekday_name': weekday_names[weekday],
+                'count': weekday_totals[weekday]
+            }
+            for weekday in range(7)
+        }
+        
+        self.stats.hourly_top_users = hourly_top_users
+        self.stats.weekday_top_users = weekday_top_users
+        self.stats.weekday_totals = weekday_totals_formatted
