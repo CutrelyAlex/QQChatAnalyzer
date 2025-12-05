@@ -132,7 +132,7 @@ function renderNetworkGraph(nodes, edges) {
             },
             shadow: {
                 enabled: true,
-                color: 'rgba(0, 0, 0, 0.1)',
+                color: 'rgba(255, 255, 255, 0.51)',
                 size: 10,
                 x: 3,
                 y: 3
