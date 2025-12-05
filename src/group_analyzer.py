@@ -120,6 +120,8 @@ class GroupAnalyzer:
             messages: 消息列表，每条消息包含: qq, time, content, sender等字段
         """
         self.lines_data = []
+        self.qq_to_name = {}  # 重新初始化为 {qq: [nickname1, nickname2, ...]} 格式
+        
         for msg in messages:
             qq = msg.get('qq', '')
             
@@ -142,9 +144,13 @@ class GroupAnalyzer:
             )
             self.lines_data.append(line_data)
             
-            # 构建映射
-            if line_data.qq not in self.qq_to_name:
-                self.qq_to_name[line_data.qq] = line_data.sender
+            # 构建映射：收集同一QQ的所有昵称
+            if qq and line_data.sender:
+                if qq not in self.qq_to_name:
+                    self.qq_to_name[qq] = []
+                # 去重添加昵称
+                if line_data.sender not in self.qq_to_name[qq]:
+                    self.qq_to_name[qq].append(line_data.sender)
     
     def analyze(self) -> GroupStats:
         """
@@ -312,9 +318,14 @@ class GroupAnalyzer:
         top_40_idx = max(top_10_idx + 1, int(total_members * 0.4))
         top_80_idx = max(top_40_idx + 1, int(total_members * 0.8))
         
-        # 构建成员信息
+        # 构建成员信息 - 处理多个昵称的格式
         def build_member_info(qq, count):
-            name = self.qq_to_name.get(qq, qq)
+            names = self.qq_to_name.get(qq, [qq])
+            # 如果是列表，取最后一个（最新的昵称），否则直接使用
+            if isinstance(names, list):
+                name = names[-1] if names else qq
+            else:
+                name = names if names else qq
             return {'qq': qq, 'name': name, 'count': count}
         
         # 分层成员
@@ -325,13 +336,21 @@ class GroupAnalyzer:
         
         # 成员消息计数
         self.stats.member_message_count = {
-            qq: {'name': self.qq_to_name.get(qq, qq), 'count': count} 
+            qq: {'name': build_member_info(qq, 0)['name'], 'count': count} 
             for qq, count in member_count.items()
         }
     
     def _calculate_time_based_stats(self, hourly_user_count, weekday_user_count, weekday_totals) -> None:
         """计算时段统计（从单次遍历的结果中）"""
         weekday_names = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+        
+        # 辅助函数：获取QQ对应的最新昵称
+        def get_qq_name(qq):
+            names = self.qq_to_name.get(qq, [qq])
+            if isinstance(names, list):
+                return names[-1] if names else qq
+            else:
+                return names if names else qq
         
         # 每小时最活跃用户
         hourly_top_users = {}
@@ -340,7 +359,7 @@ class GroupAnalyzer:
                 top_qq = max(hourly_user_count[hour].items(), key=lambda x: x[1])
                 hourly_top_users[hour] = {
                     'qq': top_qq[0],
-                    'name': self.qq_to_name.get(top_qq[0], top_qq[0]),
+                    'name': get_qq_name(top_qq[0]),
                     'count': top_qq[1]
                 }
         
@@ -352,7 +371,7 @@ class GroupAnalyzer:
                 weekday_top_users[weekday] = {
                     'weekday_name': weekday_names[weekday],
                     'qq': top_qq[0],
-                    'name': self.qq_to_name.get(top_qq[0], top_qq[0]),
+                    'name': get_qq_name(top_qq[0]),
                     'count': top_qq[1]
                 }
         
@@ -389,8 +408,15 @@ class GroupAnalyzer:
         if all_text_lines:
             # 使用 CutWords 进行分词和热词提取，使用 RemoveWords 作为停用词
             try:
-                # 提取所有昵称列表
-                nicknames = list(self.qq_to_name.values()) if self.qq_to_name else []
+                # 提取所有昵称列表（包括历史昵称）
+                # qq_to_name 格式: {qq: [nickname1, nickname2, ...]}
+                nicknames = []
+                for qq, names_list in self.qq_to_name.items():
+                    if isinstance(names_list, list):
+                        nicknames.extend(names_list)
+                    else:
+                        nicknames.append(names_list)
+                
                 word_counts, words_top = cut_words(all_text_lines, top_words_num=20, nicknames=nicknames)
                 self.stats.hot_words = words_top
             except Exception as e:

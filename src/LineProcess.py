@@ -67,7 +67,7 @@ class LineData:
 def process_lines_data(file_name, mode, part_name=None):
     all_lines = []
     all_linesData = []
-    qq_to_name_map = {}  # 新增：QQ到昵称的映射
+    qq_to_name_map = {}  # QQ到所有昵称的映射：{qq: set(昵称1, 昵称2, ...)}
     time_pattern = TIME_LINE_PATTERN
 
     with open(file_name, 'r', encoding='utf-8') as f:
@@ -133,10 +133,17 @@ def process_lines_data(file_name, mode, part_name=None):
                 is_recall=is_recall
             )
             all_linesData.append(line_data)
-            # 新增：构建QQ到昵称的映射
+            
+            # 新增：收集同一QQ的所有昵称（历史昵称）
             if qq and sender:
-                qq_to_name_map[qq] = sender
+                if qq not in qq_to_name_map:
+                    qq_to_name_map[qq] = set()
+                qq_to_name_map[qq].add(sender)
         i += 1
+    
+    # 将set转换为list，便于后续使用
+    qq_to_name_map = {qq: list(names) for qq, names in qq_to_name_map.items()}
+    
     return all_lines, all_linesData, qq_to_name_map
 
 def process_lines(file_path, mode='all', part_name=None):
