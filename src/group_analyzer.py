@@ -21,6 +21,10 @@ except ImportError:
     from RemoveWords import remove_words
     from utils import parse_timestamp, SYSTEM_QQ_NUMBERS, EMOJI_PATTERN
 
+# 预热 jieba
+import jieba
+jieba.initialize()
+
 
 class GroupStats:
     """群体统计数据容器"""
@@ -152,70 +156,150 @@ class GroupAnalyzer:
         if not self.lines_data:
             return self.stats
 
-        # 按顺序执行各项分析
-        self._analyze_activity_metrics()
-        self._analyze_member_stratification()
-        self._analyze_message_types()
+        # 预解析所有时间戳
+        parsed_times = []
+        for line_data in self.lines_data:
+            dt = parse_timestamp(line_data.timepat)
+            parsed_times.append(dt)
+        
+        # 单次遍历，收集所有统计数据
+        self._analyze_all_in_one_pass(parsed_times)
+        
+        # 热词提取（独立处理，因为需要分词）
         self._extract_hot_content()
-        self._build_heatmap()
-        self._analyze_time_based_top_users()  # 新增：时段和日期统计
 
-        return self.stats   
+        return self.stats
     
-    def _analyze_activity_metrics(self) -> None:
-        """T022: 分析群活跃度指标 - 总消息、日均、月度趋势、高峰时段"""
-        # 总消息数
-        self.stats.total_messages = len(self.lines_data)
+    def _analyze_all_in_one_pass(self, parsed_times: List) -> None:
+        """
+        完成所有统计分析
         
-        if not self.lines_data:
-            return
-        
-        # 计算活跃天数
-        unique_dates = {}  # {date: True}
+        合并了以下分析：
+        - 活跃度指标 (总消息、日均、月度趋势、高峰时段)
+        - 成员分层统计
+        - 消息类型分析
+        - 7*24热力图
+        - 时段和日期统计
+        """
+        # === 初始化所有计数器 ===
+        unique_dates = set()
         monthly_count = defaultdict(int)
         hourly_count = defaultdict(int)
+        member_count = defaultdict(int)
         
-        for line_data in self.lines_data:
+        # 消息类型计数
+        text_count = 0
+        image_count = 0
+        emoji_count = 0
+        link_count = 0
+        forward_count = 0
+        
+        # 热力图
+        heatmap = defaultdict(int)
+        
+        # 时段分析
+        hourly_user_count = defaultdict(lambda: defaultdict(int))
+        weekday_user_count = defaultdict(lambda: defaultdict(int))
+        weekday_totals = defaultdict(int)
+        
+        # 表情统计
+        emoji_counter = defaultdict(int)
+        
+        # === 单次遍历 ===
+        for i, line_data in enumerate(self.lines_data):
+            dt = parsed_times[i]
+            qq = line_data.qq
+            
+            # 1. 活跃度指标
             date = line_data.get_date()
             if date:
-                unique_dates[date] = True
+                unique_dates.add(date)
             
-            # 同步收集月度和时段统计
-            timepat = line_data.timepat
-            dt = parse_timestamp(timepat)
             if dt:
                 month_key = dt.strftime('%Y-%m')
                 monthly_count[month_key] += 1
                 hourly_count[dt.hour] += 1
+                
+                # 热力图
+                day = dt.weekday()
+                hour = dt.hour
+                heatmap[day * 24 + hour] += 1
+                
+                # 时段分析
+                if qq:
+                    hourly_user_count[hour][qq] += 1
+                    weekday_user_count[day][qq] += 1
+                    weekday_totals[day] += 1
+            
+            # 2. 成员统计
+            if qq:
+                member_count[qq] += 1
+            
+            # 3. 消息类型分析
+            if line_data.image_count > 0:
+                image_count += 1
+            elif line_data.emoji_count > 0:
+                emoji_count += 1
+            elif line_data.has_link:
+                link_count += 1
+            elif line_data.is_recall:
+                forward_count += 1
+            elif line_data.clean_text.strip():
+                text_count += 1
+            
+            # 4. 表情统计
+            content = line_data.raw_text
+            emojis = EMOJI_PATTERN.findall(content)
+            for emoji in emojis:
+                if '表情' not in emoji and '图' not in emoji:
+                    emoji_counter[emoji] += 1
         
+        # === 计算统计结果 ===
+        
+        # 总消息数
+        self.stats.total_messages = len(self.lines_data)
+        
+        # 日均消息
         active_days = len(unique_dates)
-        
-        # 日均消息数
         if active_days > 0:
             self.stats.daily_average = self.stats.total_messages / active_days
         
+        # 月度趋势
         self.stats.monthly_trend = dict(sorted(monthly_count.items()))
         
         # 高峰时段
         if hourly_count:
             max_hour_count = max(hourly_count.values())
             self.stats.hourly_peak = max_hour_count
-            self.stats.peak_hours = [
+            self.stats.peak_hours = sorted([
                 hour for hour, count in hourly_count.items() 
                 if count >= max_hour_count * 0.8
-            ]
-            self.stats.peak_hours.sort()
+            ])
+        
+        # 成员分层
+        self._calculate_member_stratification(member_count)
+        
+        # 消息类型比例
+        total_typed = text_count + image_count + emoji_count + link_count + forward_count
+        if total_typed == 0:
+            total_typed = 1
+        self.stats.text_ratio = text_count / total_typed
+        self.stats.image_ratio = image_count / total_typed
+        self.stats.emoji_ratio = emoji_count / total_typed
+        self.stats.link_ratio = link_count / total_typed
+        self.stats.forward_ratio = forward_count / total_typed
+        
+        # 热力图
+        self.stats.heatmap = dict(heatmap)
+        
+        # 表情排行
+        self.stats.hot_emojis = sorted(emoji_counter.items(), key=lambda x: x[1], reverse=True)[:10]
+        
+        # 时段分析
+        self._calculate_time_based_stats(hourly_user_count, weekday_user_count, weekday_totals)
     
-    def _analyze_member_stratification(self) -> None:
-        """T023: 实现成员分层统计 - 核心/活跃/普通/潜水成员分类"""
-        # 统计每个成员的发言次数
-        member_count = defaultdict(int)
-        
-        for line_data in self.lines_data:
-            qq = line_data.qq
-            if qq:
-                member_count[qq] += 1
-        
+    def _calculate_member_stratification(self, member_count: Dict[str, int]) -> None:
+        """计算成员分层（从单次遍历的结果中）"""
         if not member_count:
             return
         
@@ -228,60 +312,62 @@ class GroupAnalyzer:
         top_40_idx = max(top_10_idx + 1, int(total_members * 0.4))
         top_80_idx = max(top_40_idx + 1, int(total_members * 0.8))
         
-        # 构建成员信息字典，包含昵称
+        # 构建成员信息
         def build_member_info(qq, count):
-            name = self.qq_to_name.get(qq, qq)  # 如果没有昵称则用QQ
-            return {
-                'qq': qq,
-                'name': name,
-                'count': count
-            }
+            name = self.qq_to_name.get(qq, qq)
+            return {'qq': qq, 'name': name, 'count': count}
         
-        # 分层成员（包含昵称）
+        # 分层成员
         self.stats.core_members = [build_member_info(m[0], m[1]) for m in sorted_members[:top_10_idx]]
         self.stats.active_members = [build_member_info(m[0], m[1]) for m in sorted_members[top_10_idx:top_40_idx]]
         self.stats.normal_members = [build_member_info(m[0], m[1]) for m in sorted_members[top_40_idx:top_80_idx]]
         self.stats.lurkers = [build_member_info(m[0], m[1]) for m in sorted_members[top_80_idx:]]
         
-        # 成员消息计数（包含昵称）
+        # 成员消息计数
         self.stats.member_message_count = {
             qq: {'name': self.qq_to_name.get(qq, qq), 'count': count} 
             for qq, count in member_count.items()
         }
     
-    def _analyze_message_types(self) -> None:
-        """T024: 实现消息类型分析 - 文字/图片/表情/链接/转发占比"""
-        if not self.stats.total_messages:
-            return
+    def _calculate_time_based_stats(self, hourly_user_count, weekday_user_count, weekday_totals) -> None:
+        """计算时段统计（从单次遍历的结果中）"""
+        weekday_names = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
         
-        text_count = 0
-        image_count = 0
-        emoji_count = 0
-        link_count = 0
-        forward_count = 0
+        # 每小时最活跃用户
+        hourly_top_users = {}
+        for hour in range(24):
+            if hourly_user_count[hour]:
+                top_qq = max(hourly_user_count[hour].items(), key=lambda x: x[1])
+                hourly_top_users[hour] = {
+                    'qq': top_qq[0],
+                    'name': self.qq_to_name.get(top_qq[0], top_qq[0]),
+                    'count': top_qq[1]
+                }
         
-        for line_data in self.lines_data:
-            # 检测消息类型
-            if line_data.image_count > 0:
-                image_count += 1
-            elif line_data.emoji_count > 0:
-                emoji_count += 1
-            elif line_data.has_link:
-                link_count += 1
-            elif line_data.is_recall:
-                forward_count += 1
-            elif line_data.clean_text.strip():
-                text_count += 1
+        # 每个星期几最活跃用户
+        weekday_top_users = {}
+        for weekday in range(7):
+            if weekday_user_count[weekday]:
+                top_qq = max(weekday_user_count[weekday].items(), key=lambda x: x[1])
+                weekday_top_users[weekday] = {
+                    'weekday_name': weekday_names[weekday],
+                    'qq': top_qq[0],
+                    'name': self.qq_to_name.get(top_qq[0], top_qq[0]),
+                    'count': top_qq[1]
+                }
         
-        total = text_count + image_count + emoji_count + link_count + forward_count
-        if total == 0:
-            total = 1
+        # 星期几总消息数
+        weekday_totals_formatted = {
+            weekday: {
+                'weekday_name': weekday_names[weekday],
+                'count': weekday_totals[weekday]
+            }
+            for weekday in range(7)
+        }
         
-        self.stats.text_ratio = text_count / total
-        self.stats.image_ratio = image_count / total
-        self.stats.emoji_ratio = emoji_count / total
-        self.stats.link_ratio = link_count / total
-        self.stats.forward_ratio = forward_count / total
+        self.stats.hourly_top_users = hourly_top_users
+        self.stats.weekday_top_users = weekday_top_users
+        self.stats.weekday_totals = weekday_totals_formatted
     
     def _extract_hot_content(self) -> None:
         """T025: 提取热词"""
@@ -312,79 +398,3 @@ class GroupAnalyzer:
                 self.stats.hot_words = []
         
         self.stats.hot_emojis = sorted(emoji_count.items(), key=lambda x: x[1], reverse=True)[:10]
-    
-    def _build_heatmap(self) -> None:
-        """T026: 构建7*24热力图 - 按周x小时统计消息分布"""
-        # 初始化热力图 (7天 * 24小时 = 168个格子)
-        heatmap = defaultdict(int)
-        
-        for line_data in self.lines_data:
-            dt = parse_timestamp(line_data.timepat)
-            if dt:
-                # weekday: 0=Monday, 6=Sunday
-                day = dt.weekday()
-                hour = dt.hour
-                # 格子索引: day*24 + hour
-                key = day * 24 + hour
-                heatmap[key] += 1
-        
-        # 转换为标准格式：{day*24+hour: count}
-        self.stats.heatmap = dict(heatmap)
-    
-    def _analyze_time_based_top_users(self) -> None:
-        """分析每个时段和每天最活跃的用户，以及全年各星期几的总消息数"""
-        # 统计每小时每人的消息数: {hour: {qq: count}}
-        hourly_user_count = defaultdict(lambda: defaultdict(int))
-        # 统计每个星期几每人的消息数: {weekday: {qq: count}}
-        weekday_user_count = defaultdict(lambda: defaultdict(int))
-        # 统计全年各星期几的总消息数
-        weekday_totals = defaultdict(int)
-        
-        for line_data in self.lines_data:
-            dt = parse_timestamp(line_data.timepat)
-            if dt and line_data.qq:
-                hour = dt.hour
-                weekday = dt.weekday()  # 0=周一, 6=周日
-                qq = line_data.qq
-                
-                hourly_user_count[hour][qq] += 1
-                weekday_user_count[weekday][qq] += 1
-                weekday_totals[weekday] += 1
-        
-        # 找出每小时最活跃的用户
-        hourly_top_users = {}
-        for hour in range(24):
-            if hourly_user_count[hour]:
-                # 找出消息最多的用户
-                top_qq = max(hourly_user_count[hour].items(), key=lambda x: x[1])
-                hourly_top_users[hour] = {
-                    'qq': top_qq[0],
-                    'name': self.qq_to_name.get(top_qq[0], top_qq[0]),
-                    'count': top_qq[1]
-                }
-        
-        # 找出每个星期几最活跃的用户
-        weekday_names = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
-        weekday_top_users = {}
-        for weekday in range(7):
-            if weekday_user_count[weekday]:
-                top_qq = max(weekday_user_count[weekday].items(), key=lambda x: x[1])
-                weekday_top_users[weekday] = {
-                    'weekday_name': weekday_names[weekday],
-                    'qq': top_qq[0],
-                    'name': self.qq_to_name.get(top_qq[0], top_qq[0]),
-                    'count': top_qq[1]
-                }
-        
-        # 格式化星期几总消息数
-        weekday_totals_formatted = {
-            weekday: {
-                'weekday_name': weekday_names[weekday],
-                'count': weekday_totals[weekday]
-            }
-            for weekday in range(7)
-        }
-        
-        self.stats.hourly_top_users = hourly_top_users
-        self.stats.weekday_top_users = weekday_top_users
-        self.stats.weekday_totals = weekday_totals_formatted

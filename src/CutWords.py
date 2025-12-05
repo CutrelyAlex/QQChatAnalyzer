@@ -60,9 +60,12 @@ def cut_words(lines_to_process : list, top_words_num: int, nicknames: list = Non
         sorted_nicknames = sorted(set(n.strip() for n in nicknames if n and n.strip()), 
                                  key=len, reverse=True)
     
+    # 预编译正则表达式（只在有昵称时）
+    has_mentions = bool(sorted_nicknames)
+    
     for s in lines_to_process:
         # 只在有@符号且有昵称时才替换昵称
-        if sorted_nicknames and '@' in s:
+        if has_mentions and '@' in s:
             s = remove_nicknames_with_at(s, sorted_nicknames)
         
         # 去除 @提及 和污染词汇
@@ -83,12 +86,6 @@ def remove_nicknames_with_at(text, sorted_nicknames):
     """
     移除文本中与@符号相关的昵称
     
-    策略：
-    1. 首先扫描是否有@符号，没有则直接返回
-    2. 按长度降序处理昵称（长昵称优先）
-    3. 移除所有 @昵称 的格式（可能跟随空格或标点）
-    4. 移除所有 昵称@ 的格式（@ 在昵称后面）
-    
     Args:
         text: 输入文本
         sorted_nicknames: 已按长度降序排序的昵称列表
@@ -102,33 +99,15 @@ def remove_nicknames_with_at(text, sorted_nicknames):
     result = text
     
     for nickname in sorted_nicknames:
-        if not nickname:
+        if not nickname or len(nickname) < 2:
             continue
         
-        # 转义正则表达式特殊字符
-        escaped_nickname = re.escape(nickname)
-        
-        # 1. 移除 @昵称 + 空格的格式
-        # 匹配 @昵称 后跟空格、标点、括号或结尾
-        result = re.sub(r'@\s*' + escaped_nickname + r'(?=[\s\.\,，。！？\:\：\)\）\]\】\(（@]|$)', ' ', result)
-        
-        # 2. 移除 昵称@ 的格式
-        result = re.sub(escaped_nickname + r'@', ' ', result)
-        
-        # 3. 移除 @昵称）的格式（中文括号）
-        result = re.sub(r'@' + escaped_nickname + r'[\）]', ' ', result)
-        
-        # 4. 移除末尾多余的括号（当@昵称被移除后留下的括号）
-        result = re.sub(r'[\）]\s*$', '', result)
+        # 直接替换 @昵称 格式（无需边界检查）
+        pattern = '@' + nickname
+        if pattern in result:
+            result = result.replace(pattern, ' ')
     
     return result
-
-
-def replace_nicknames_fast(text, sorted_nicknames):
-    """
-    快速替换昵称 (已弃用，使用 remove_nicknames_with_at 替代)
-    """
-    return remove_nicknames_with_at(text, sorted_nicknames)
 
 
 def remove_mentions_fast(text):
