@@ -200,7 +200,7 @@ async function analyzeNetwork() {
             const stats = data.data;
             appState.analysisData.network = stats;
             
-            // 显示统计卡片
+            // 显示统计卡片和图表容器
             document.getElementById('network-stats').style.display = 'block';
             document.getElementById('network-graph-container').style.display = 'block';
             

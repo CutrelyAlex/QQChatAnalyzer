@@ -266,6 +266,37 @@
                         </p>
                     </div>
                     <div class="tab-body">
+                        <!-- 网络图控制面板 - 在分析前设置 -->
+                        <div class="network-controls">
+                            <div class="control-panel">
+                                <div class="control-group">
+                                    <label class="control-label">
+                                        <span class="control-icon">🔗</span>
+                                        <span>最大节点数: <strong id="max-nodes-value">100</strong></span>
+                                    </label>
+                                    <input type="range" id="max-nodes-slider" class="control-slider" 
+                                           min="1" max="2000" value="100" step="1">
+                                    <div class="control-range-labels">
+                                        <span>1</span>
+                                        <span>2000</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="control-group">
+                                    <label class="control-label">
+                                        <span class="control-icon">➡️</span>
+                                        <span>最大边数: <strong id="max-edges-value">300</strong></span>
+                                    </label>
+                                    <input type="range" id="max-edges-slider" class="control-slider" 
+                                           min="100" max="9999" value="300" step="1">
+                                    <div class="control-range-labels">
+                                        <span>100</span>
+                                        <span>9999</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <button id="network-analyze-btn" class="btn btn-primary">
                             生成网络图
                         </button>
