@@ -71,11 +71,21 @@ class NetworkStats:
 class NetworkAnalyzer:
     """智能社交网络分析器"""
 
-    def __init__(self, enable_parallel=True):
+    def __init__(
+        self,
+        enable_parallel=True,
+        max_nodes_for_viz: Optional[int] = None,
+        max_edges_for_viz: Optional[int] = None,
+        limit_compute: bool = False,
+    ):
         self.messages = []
         self.stats = NetworkStats()
         self.qq_to_name = {}  # QQ -> 昵称映射
         self.enable_parallel = enable_parallel  # 启用并行处理
+
+        # 当启用时：在分析前按“最活跃用户Top-N”裁剪消息，减少计算量。
+        # 注意：这会改变网络计算的输入范围
+        self.limit_compute = limit_compute
 
         # 算法参数 - 调整为更宽松的设置
         self.conversation_window = 30  # 分钟：对话窗口大小（增加到30分钟）
@@ -84,8 +94,8 @@ class NetworkAnalyzer:
         
         # 优化参数
         self.min_edge_weight = 0.2  # 最小边权重（过滤弱关系）
-        self.max_nodes_for_viz = 100  # 可视化最大节点数
-        self.max_edges_for_viz = 300  # 可视化最大边数
+        self.max_nodes_for_viz = max_nodes_for_viz if isinstance(max_nodes_for_viz, int) and max_nodes_for_viz > 0 else 100
+        self.max_edges_for_viz = max_edges_for_viz if isinstance(max_edges_for_viz, int) and max_edges_for_viz > 0 else 300
 
     def load_messages(self, messages: List[Dict[str, Any]]) -> None:
         """
@@ -95,6 +105,20 @@ class NetworkAnalyzer:
             messages: 消息列表，每条消息包含: qq, time, content, sender等字段
         """
         self.messages = sorted(messages, key=lambda x: x.get('time', ''))
+
+        # 可选：限制计算范围（Top-N 活跃用户）
+        if self.limit_compute and self.max_nodes_for_viz is not None:
+            user_counts = defaultdict(int)
+            for msg in self.messages:
+                qq = msg.get('qq', '')
+                if qq:
+                    user_counts[qq] += 1
+
+            # 允许 N=1（只看一个节点），但通常网络至少需要 2 个节点才有边
+            limit_n = max(1, int(self.max_nodes_for_viz))
+            top_users = sorted(user_counts.items(), key=lambda x: x[1], reverse=True)[:limit_n]
+            allowed = set(u for u, _ in top_users)
+            self.messages = [m for m in self.messages if m.get('qq', '') in allowed]
         
         # 构建 QQ -> 昵称映射
         for msg in self.messages:

@@ -191,7 +191,19 @@ async function analyzeNetwork() {
         updateProgress('network', 30, '构建社交图...');
         
         // T037-T039: 调用社交网络分析API
-        const response = await fetch(`${API_BASE}/network?file=${appState.currentFile}`);
+        const maxNodes = (typeof currentNetworkLimits !== 'undefined' && currentNetworkLimits?.maxNodes)
+            ? currentNetworkLimits.maxNodes
+            : 100;
+        const maxEdges = (typeof currentNetworkLimits !== 'undefined' && currentNetworkLimits?.maxEdges)
+            ? currentNetworkLimits.maxEdges
+            : 300;
+
+        const response = await fetch(
+            `${API_BASE}/network?file=${encodeURIComponent(appState.currentFile)}` +
+            `&max_nodes=${encodeURIComponent(maxNodes)}` +
+            `&max_edges=${encodeURIComponent(maxEdges)}` +
+            `&limit_compute=1`
+        );
         const data = await response.json();
         
         if (data.success) {

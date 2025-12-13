@@ -283,6 +283,9 @@ def get_network_analysis():
     """社交网络分析API - T036实现"""
     try:
         filename = request.args.get('file')
+        max_nodes = request.args.get('max_nodes', type=int)
+        max_edges = request.args.get('max_edges', type=int)
+        limit_compute = request.args.get('limit_compute', '').strip() in ('1', 'true', 'True', 'yes', 'on')
         if not filename:
             return jsonify({'success': False, 'error': '未指定文件'}), 400
         
@@ -325,8 +328,12 @@ def get_network_analysis():
                 })
             i += 1
         
-        # 执行网络分析
-        analyzer = NetworkAnalyzer()
+        # 执行网络分析（允许用前端 slider 覆盖默认上限）
+        analyzer = NetworkAnalyzer(
+            max_nodes_for_viz=max_nodes,
+            max_edges_for_viz=max_edges,
+            limit_compute=limit_compute
+        )
         analyzer.load_messages(messages)
         stats = analyzer.analyze()
         

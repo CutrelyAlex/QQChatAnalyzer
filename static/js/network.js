@@ -15,13 +15,10 @@ function renderNetworkGraph(nodes, edges) {
     
     if (!container) return;
     
-    // 存储原始数据供后续调整使用
-    if (originalNetworkData.nodes.length === 0) {
-        originalNetworkData = { 
-            nodes: JSON.parse(JSON.stringify(nodes)), 
-            edges: JSON.parse(JSON.stringify(edges)) 
-        };
-    }
+    originalNetworkData = {
+        nodes: JSON.parse(JSON.stringify(nodes)),
+        edges: JSON.parse(JSON.stringify(edges))
+    };
     
     // ============ 配置：最大节点和边数量 ============
     const MAX_NODES = currentNetworkLimits.maxNodes;
@@ -457,6 +454,12 @@ function initNetworkControls() {
         console.warn('网络图控制元素未找到');
         return;
     }
+
+    // 初始化：同步 slider 当前值到全局限制（否则默认仍是 100/300）
+    if (maxNodesValue) maxNodesValue.textContent = maxNodesSlider.value;
+    if (maxEdgesValue) maxEdgesValue.textContent = maxEdgesSlider.value;
+    currentNetworkLimits.maxNodes = parseInt(maxNodesSlider.value);
+    currentNetworkLimits.maxEdges = parseInt(maxEdgesSlider.value);
     
     // 更新显示值 - 控制面板现在总是显示，所以实时更新
     maxNodesSlider.addEventListener('input', function() {
