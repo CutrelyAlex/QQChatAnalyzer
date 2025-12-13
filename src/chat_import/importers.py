@@ -79,11 +79,26 @@ def _parse_timestamp_ms(value: Any) -> Optional[int]:
 
     if isinstance(value, str):
         s = value.strip()
-        # ISO 8601 with Z
+
+        # ISO 8601
         try:
+            # QQChatExporter V4 的 timestamp 常以 "Z" 结尾，但很多导出文件里这个时间本身就是“本地时间”。
+            # 如果把它当 UTC，再转换为本地时间，会导致小时分布整体偏移（例如 06:00 变成 14:00）。
+            # 默认：把 "Z" 当作“本地时间标记”处理（去掉 Z，按本地时区解释）。
+            # 如需严格按 UTC 解释，可设置环境变量 CIYUN_JSON_ASSUME_UTC=1。
             if s.endswith("Z"):
-                dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+                assume_utc = os.getenv("CIYUN_JSON_ASSUME_UTC", "0").strip().lower() in (
+                    "1", "true", "yes", "y", "on"
+                )
+                if assume_utc:
+                    dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+                else:
+                    dt = datetime.fromisoformat(s[:-1])
                 return int(dt.timestamp() * 1000)
+
+            # 其他 ISO（可能带 offset / 不带 offset）
+            dt = datetime.fromisoformat(s)
+            return int(dt.timestamp() * 1000)
         except Exception:
             pass
 
@@ -128,10 +143,10 @@ def _detect_system_and_recall_from_raw_message(raw_message: Any) -> Tuple[bool, 
     msg_type = safe_int(raw_message.get("msgType"))
     sub_msg_type = safe_int(raw_message.get("subMsgType"))
 
-    # 已知：msgType=5 是灰条/系统类（包含撤回、入群提示等）
+    # msgType=5 是灰条/系统类（包含撤回、入群提示等）
     if msg_type == 5:
         is_system = True
-        # 常见：subMsgType=4 为撤回提示
+        # subMsgType=4 为撤回提示
         if sub_msg_type == 4:
             is_recalled = True
 

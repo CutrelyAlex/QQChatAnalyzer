@@ -261,8 +261,12 @@ class PersonalAnalyzer:
             if not qq or qq in SYSTEM_QQ_NUMBERS:
                 continue
 
-            # 系统事件不计入个人统计
-            if m.get('is_system'):
+            # 系统事件通常不计入个人统计，但“撤回”在导出里往往以系统灰条出现，
+            # 如果这里直接过滤，会导致个人撤回数永远为 0。
+            content = str(m.get('content', '') or '')
+            is_system = bool(m.get('is_system'))
+            is_recalled = bool(m.get('is_recalled')) or ('撤回了一条消息' in content)
+            if is_system and (not is_recalled):
                 continue
 
             if qq_list and qq not in stats_dict:
@@ -274,11 +278,11 @@ class PersonalAnalyzer:
                 'time': ts,
                 'sender': m.get('sender', ''),
                 'qq': qq,
-                'content': m.get('content', ''),
+                'content': content,
 
                 # 结构化字段（可能为空）
-                'is_system': bool(m.get('is_system')),
-                'is_recalled': bool(m.get('is_recalled')),
+                'is_system': is_system,
+                'is_recalled': is_recalled,
                 'message_type': m.get('message_type'),
                 'resource_types': m.get('resource_types') if isinstance(m.get('resource_types'), list) else [],
                 'mentions': m.get('mentions') if isinstance(m.get('mentions'), list) else [],
