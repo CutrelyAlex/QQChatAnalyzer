@@ -309,11 +309,24 @@
                                 圆形排布
                             </button>
                             <button id="layout-tree-btn" class="btn btn-secondary" type="button" title="树状排布">
-                                树状排布
+                                树状排布(点击节点整理)
                             </button>
                             <button id="layout-smart-btn" class="btn btn-secondary" type="button" title="智能排布">
-                                智能排布
+                                散落排布
                             </button>
+
+                            <div class="network-search" style="display: flex; gap: 8px; align-items: center; margin-left: auto;">
+                                <input
+                                    id="network-node-search"
+                                    class="network-search-input"
+                                    type="text"
+                                    placeholder="搜索昵称或QQ号..."
+                                    autocomplete="off"
+                                />
+                                <button id="network-node-search-btn" class="btn btn-secondary" type="button" title="搜索并居中到对应节点">
+                                    搜索居中
+                                </button>
+                            </div>
                         </div>
 
                         <!-- 分析进度条 -->

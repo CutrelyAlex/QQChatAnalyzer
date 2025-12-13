@@ -339,6 +339,27 @@ function renderNetworkGraph(nodes, edges) {
         }
     };
 
+    const focusOnNodesBoundingBox = (nodeIds, maxZoom = 1.4) => {
+        try {
+            const ids = (nodeIds || []).filter(Boolean);
+            if (!ids.length) return;
+            // fit 会把一组节点的包围盒移动到视窗中心
+            network.fit({
+                nodes: ids,
+                animation: {
+                    duration: 420,
+                    easingFunction: 'easeInOutQuad'
+                },
+                // 避免过度放大
+                maxZoom,
+                // 适当留白
+                padding: 60
+            });
+        } catch (_) {
+            // ignore
+        }
+    };
+
     const BATCH_SIZE = 50;
     const processEdgeUpdates = async (updates) => {
         for (let i = 0; i < updates.length; i += BATCH_SIZE) {
@@ -549,6 +570,9 @@ function renderNetworkGraph(nodes, edges) {
             if (edge) {
                 await applyEdgeFocus(edgeId);
 
+                // 视图居中到两个端点的包围盒中心
+                focusOnNodesBoundingBox([edge.from, edge.to], 1.35);
+
                 const fromNode = visNodes.find(n => n.id === edge.from);
                 const toNode = visNodes.find(n => n.id === edge.to);
                 const fromLabel = (fromNode && (nodeBaseCache[fromNode.id]?.label || fromNode.label)) || edge.from_name || edge.from;
@@ -655,6 +679,9 @@ function initNetworkLayoutButtons() {
     const btnTree = document.getElementById('layout-tree-btn');
     const btnSmart = document.getElementById('layout-smart-btn');
 
+    const searchInput = document.getElementById('network-node-search');
+    const searchBtn = document.getElementById('network-node-search-btn');
+
     let smartLayoutBusy = false;
 
     const requireNetwork = () => {
@@ -663,6 +690,86 @@ function initNetworkLayoutButtons() {
             return false;
         }
         return true;
+    };
+
+    const normalize = (s) => (s ?? '').toString().trim().toLowerCase();
+
+    const findBestNodeId = (query) => {
+        const q = normalize(query);
+        if (!q) return null;
+
+        const data = window.currentNetworkData;
+        const nodes = data?.nodes?.get?.() || [];
+        if (!nodes.length) return null;
+
+        // 1) id 精确匹配
+        for (const n of nodes) {
+            if (normalize(n.id) === q) return n.id;
+        }
+
+        // 2) label 精确匹配
+        for (const n of nodes) {
+            if (normalize(n.label) === q) return n.id;
+        }
+
+        // 3) id 包含
+        for (const n of nodes) {
+            if (normalize(n.id).includes(q)) return n.id;
+        }
+
+        // 4) label 包含
+        for (const n of nodes) {
+            if (normalize(n.label).includes(q)) return n.id;
+        }
+
+        return null;
+    };
+
+    const focusAndSelectNode = (nodeId) => {
+        const network = window.currentNetwork;
+        const data = window.currentNetworkData;
+        if (!network || !data) return;
+
+        network.selectNodes([nodeId]);
+
+        // 目标：在树状布局很大时也能看得清
+        let targetScale = 1.35;
+        try {
+            const cur = network.getScale();
+            if (typeof cur === 'number' && isFinite(cur)) {
+                targetScale = Math.max(1.1, Math.min(1.8, cur < 0.9 ? 1.25 : cur * 1.25));
+            }
+        } catch (_) {
+            // ignore
+        }
+
+        try {
+            network.focus(nodeId, {
+                scale: targetScale,
+                animation: { duration: 380, easingFunction: 'easeInOutQuad' }
+            });
+        } catch (_) {
+            // ignore
+        }
+
+        try {
+            const node = data.nodes.get(nodeId);
+            const label = node?.label || nodeId;
+            showStatusMessage('success', `🔎 已定位: ${label} (${nodeId})`);
+        } catch (_) {
+            showStatusMessage('success', `🔎 已定位: ${nodeId}`);
+        }
+    };
+
+    const handleSearch = () => {
+        if (!requireNetwork()) return;
+        const q = searchInput?.value || '';
+        const nodeId = findBestNodeId(q);
+        if (!nodeId) {
+            showStatusMessage('warning', '未找到匹配的成员（可输入昵称或QQ号）');
+            return;
+        }
+        focusAndSelectNode(nodeId);
     };
 
     const applyCircularLayout = () => {
@@ -929,6 +1036,16 @@ function initNetworkLayoutButtons() {
     if (btnCircle) btnCircle.addEventListener('click', applyCircularLayout);
     if (btnTree) btnTree.addEventListener('click', applyTreeLayout);
     if (btnSmart) btnSmart.addEventListener('click', applySmartLayout);
+
+    if (searchBtn) searchBtn.addEventListener('click', handleSearch);
+    if (searchInput) {
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                handleSearch();
+            }
+        });
+    }
 }
 
 // 页面加载时初始化控制面板

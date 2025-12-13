@@ -137,6 +137,21 @@ html::before {
     white-space: nowrap;
 }
 
+/* 网络图：搜索居中控件 */
+.network-search-input {
+    min-width: 220px;
+    padding: 10px 12px;
+    border: 1px solid var(--accent-cyan);
+    border-radius: var(--border-radius);
+    background-color: rgba(10, 14, 39, 0.8);
+    color: var(--text-color);
+    font-size: 13px;
+}
+
+.network-search-input::placeholder {
+    color: rgba(255, 255, 255, 0.45);
+}
+
 .ai-toggle {
     display: flex;
     align-items: center;
