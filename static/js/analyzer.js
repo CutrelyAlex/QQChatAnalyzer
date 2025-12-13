@@ -98,6 +98,21 @@ function displayPersonalStats(stats) {
     if (stats.top_words && stats.top_words.length > 0) {
         renderHotWords('personal-hot-words', stats.top_words);
     }
+        const setIfExists = (id, value, fallback = 0) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (value === undefined || value === null || Number.isNaN(value)) {
+                el.textContent = fallback;
+                return;
+            }
+            el.textContent = value;
+        };
+
+        setIfExists('stat-image-count', stats.image_count ?? stats.images_count ?? 0);
+        setIfExists('stat-emoji-count', stats.emoji_count ?? 0);
+        setIfExists('stat-forward-count', stats.forward_count ?? 0);
+        setIfExists('stat-file-count', stats.file_count ?? 0);
+        setIfExists('stat-recall-count', stats.recall_count ?? 0);
 }
 
 async function analyzeGroup() {

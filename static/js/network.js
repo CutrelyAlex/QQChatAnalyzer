@@ -312,6 +312,15 @@ function renderNetworkGraph(nodes, edges) {
     
     // 初始适配视图
     network.once('afterDrawing', () => {
+        if (typeof window.applyTreeLayout === 'function') {
+            try {
+                window.applyTreeLayout({ silent: true });
+                return;
+            } catch (e) {
+                console.warn('Failed to apply default tree layout:', e);
+            }
+        }
+
         network.fit({
             animation: {
                 duration: 500,
@@ -834,7 +843,8 @@ function initNetworkLayoutButtons() {
         showStatusMessage('success', '✅ 已切换：圆形排布');
     };
 
-    const applyTreeLayout = () => {
+    const applyTreeLayout = (opts = {}) => {
+        const silent = !!opts.silent;
         if (!requireNetwork()) return;
         const network = window.currentNetwork;
         const data = window.currentNetworkData;
@@ -932,8 +942,13 @@ function initNetworkLayoutButtons() {
             edges: { smooth: { enabled: true, type: 'cubicBezier', roundness: 0.2 } }
         });
         network.fit({ animation: { duration: 600, easingFunction: 'easeInOutQuad' } });
-        showStatusMessage('success', '✅ 已切换：树状排布');
+        if (!silent) {
+            showStatusMessage('success', '✅ 已切换：树状排布');
+        }
     };
+
+    // Expose for default layout on first render
+    window.applyTreeLayout = applyTreeLayout;
 
     const applySmartLayout = () => {
         if (!requireNetwork()) return;

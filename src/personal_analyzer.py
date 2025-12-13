@@ -64,6 +64,8 @@ class PersonalStats:
         self.image_count = 0
         self.emoji_count = 0
         self.link_count = 0
+        self.forward_count = 0
+        self.file_count = 0
         self.recall_count = 0
         self.system_count = 0
         
@@ -95,6 +97,8 @@ class PersonalStats:
             'image_count': self.image_count,
             'emoji_count': self.emoji_count,
             'link_count': self.link_count,
+            'forward_count': self.forward_count,
+            'file_count': self.file_count,
             'recall_count': self.recall_count,
             'system_count': self.system_count,
             # 转换热词格式: [(word, count)] -> [{word, count}]
@@ -257,7 +261,7 @@ class PersonalAnalyzer:
             if not qq or qq in SYSTEM_QQ_NUMBERS:
                 continue
 
-            # 系统事件不计入个人统计（但保留计数口径以便 UI 可展示）
+            # 系统事件不计入个人统计
             if m.get('is_system'):
                 continue
 
@@ -370,6 +374,8 @@ class PersonalAnalyzer:
             stats.image_count += sum(1 for t in rtypes if t == 'image')
             stats.emoji_count += sum(1 for t in rtypes if t in ('emoji', 'sticker'))
             stats.link_count += 1 if ('link' in rtypes) else 0
+            stats.forward_count += 1 if ('forward' in rtypes) else 0
+            stats.file_count += sum(1 for t in rtypes if t == 'file')
         else:
             stats.image_count += content.count('[图片]')
             stats.emoji_count += content.count('[表情]')
@@ -444,7 +450,7 @@ class PersonalAnalyzer:
             
             stats.max_streak_days = max_streak
         
-        # 互动对象分析 - 统计此用户@了谁（优先结构化 mentions）
+        # 互动对象分析 - 统计此用户@了谁（结构化 mentions）
         interactions = Counter()
         for msg in all_messages:
             if msg['qq'] == stats.qq:

@@ -621,7 +621,7 @@ html::before {
     margin-bottom: 20px;
     border: 1px solid rgba(0, 255, 255, 0.3);
     border-radius: var(--border-radius);
-    box-shadow: 0 0 15px rgba(0, 255, 255, 0.15);
+    font-size: 11px;
 }
 
 .chart-container h3 {
@@ -630,7 +630,7 @@ html::before {
     color: var(--primary-color);
     text-shadow: 0 0 10px rgba(0, 255, 0, 0.4);
     letter-spacing: 1px;
-    font-family: 'Courier New', monospace;
+    font-size: 20px;
 }
 
 .chart-container canvas {

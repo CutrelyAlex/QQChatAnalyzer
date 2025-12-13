@@ -5,9 +5,16 @@
 
 // ============ 热词数据缓存 ============
 const hotWordsCache = {
-    examples: {},  // 缓存已加载的示例
+    examples: {},  // 缓存已加载的示例（按 word+file+scope+qq 分组）
     loading: {}    // 记录正在加载的词
 };
+
+function _hotwordCacheKey(word, containerId, qqId) {
+    const file = appState?.currentFile || '';
+    const scope = containerId || '';
+    const q = qqId || '';
+    return `${scope}::${file}::${q}::${word}`;
+}
 
 // ============ 热词可视化 ============
 
@@ -165,30 +172,40 @@ function renderWordRow(item, rank, containerId) {
  * @param {string} containerId - 容器ID
  */
 function loadWordExamplesAsync(word, cell, containerId) {
+    const isPersonal = containerId === 'personal-hot-words';
+    const qqId = isPersonal ? (() => {
+        const q = document.getElementById('qq-input')?.value;
+        if (!q) return '';
+        const resolved = (typeof resolveMemberQuery === 'function') ? resolveMemberQuery(q) : { id: q };
+        return resolved?.id || '';
+    })() : '';
+
+    const key = _hotwordCacheKey(word, containerId, qqId);
+
     // 如果已缓存，直接显示
-    if (hotWordsCache.examples[word]) {
-        displayExamplePreview(cell, hotWordsCache.examples[word], word);
+    if (hotWordsCache.examples[key]) {
+        displayExamplePreview(cell, hotWordsCache.examples[key], word, containerId, qqId);
         return;
     }
     
     // 如果已在加载，避免重复请求
-    if (hotWordsCache.loading[word]) {
+    if (hotWordsCache.loading[key]) {
         return;
     }
     
-    hotWordsCache.loading[word] = true;
+    hotWordsCache.loading[key] = true;
     
     // 使用微任务优化加载序列
     queueMicrotask(() => {
-        fetchWordExamples(word, containerId)
-            .then(examples => {
-                hotWordsCache.examples[word] = examples;
-                delete hotWordsCache.loading[word];
-                displayExamplePreview(cell, examples, word);
+        fetchWordExamples(word, containerId, { qqId, offset: 0, limit: 4 })
+            .then(page => {
+                hotWordsCache.examples[key] = page;
+                delete hotWordsCache.loading[key];
+                displayExamplePreview(cell, page, word, containerId, qqId);
             })
             .catch(error => {
                 console.error(`加载"${word}"示例失败:`, error);
-                delete hotWordsCache.loading[word];
+                delete hotWordsCache.loading[key];
                 cell.innerHTML = '<span style="color: #999; font-size: 12px;">加载失败</span>';
             });
     });
@@ -200,27 +217,21 @@ function loadWordExamplesAsync(word, cell, containerId) {
  * @param {string} containerId - 容器ID
  * @returns {Promise<Array>} - 示例数组
  */
-async function fetchWordExamples(word, containerId) {
+async function fetchWordExamples(word, containerId, opts = {}) {
     const isPersonal = containerId === 'personal-hot-words';
+    const qqId = opts.qqId || '';
+    const offset = Number.isFinite(opts.offset) ? opts.offset : 0;
+    const limit = Number.isFinite(opts.limit) ? opts.limit : 4;
 
     if (!appState.currentFile) {
-        return [];
-    }
-
-    // 避免对明显无意义的热词发起请求（例如纯数字）
-    if (/^\d+$/.test(word)) {
-        return [];
+        return { examples: [], offset: 0, limit, next_offset: 0, has_more: false };
     }
     
     let url = `${API_BASE}/chat-examples?word=${encodeURIComponent(word)}&file=${encodeURIComponent(appState.currentFile)}`;
-    if (isPersonal) {
-        const q = document.getElementById('qq-input')?.value;
-        if (q) {
-            const resolved = (typeof resolveMemberQuery === 'function') ? resolveMemberQuery(q) : { id: q };
-            if (resolved?.id) {
-                url += `&qq=${encodeURIComponent(resolved.id)}`;
-            }
-        }
+    url += `&offset=${encodeURIComponent(offset)}`;
+    url += `&limit=${encodeURIComponent(limit)}`;
+    if (isPersonal && qqId) {
+        url += `&qq=${encodeURIComponent(qqId)}`;
     }
     
     const response = await fetch(url);
@@ -230,10 +241,16 @@ async function fetchWordExamples(word, containerId) {
     
     const data = await response.json();
     if (!data.success || !data.examples) {
-        return [];
+        return { examples: [], offset, limit, next_offset: offset, has_more: false };
     }
-    
-    return data.examples.slice(0, 4);  // 最多4条
+
+    return {
+        examples: data.examples || [],
+        offset: data.offset ?? offset,
+        limit: data.limit ?? limit,
+        next_offset: data.next_offset ?? (offset + (data.examples || []).length),
+        has_more: !!data.has_more
+    };
 }
 
 /**
@@ -242,7 +259,8 @@ async function fetchWordExamples(word, containerId) {
  * @param {Array} examples - 示例数组
  * @param {string} word - 热词
  */
-function displayExamplePreview(cell, examples, word) {
+function displayExamplePreview(cell, page, word, containerId, qqId) {
+    const examples = page?.examples || [];
     if (examples.length === 0) {
         cell.innerHTML = '<span style="color: #999; font-size: 12px;">无示例</span>';
         return;
@@ -257,7 +275,7 @@ function displayExamplePreview(cell, examples, word) {
     // 点击预览显示所有示例
     cell.querySelector('.example-preview').onclick = (e) => {
         e.stopPropagation();
-        showExamplesInline(cell, examples, word);
+        showExamplesInline(cell, page, word, containerId, qqId);
     };
 }
 
@@ -267,18 +285,24 @@ function displayExamplePreview(cell, examples, word) {
  * @param {Array} examples - 示例数组
  * @param {string} word - 热词
  */
-function showExamplesInline(cell, examples, word) {
+function showExamplesInline(cell, page, word, containerId, qqId) {
     const isExpanded = cell.dataset.expanded === 'true';
+    const examples = page?.examples || [];
     
     if (isExpanded) {
         // 收起
         cell.dataset.expanded = 'false';
-        displayExamplePreview(cell, examples, word);
+        displayExamplePreview(cell, page, word, containerId, qqId);
         return;
     }
     
     // 展开显示所有示例
     cell.dataset.expanded = 'true';
+    const hasMore = !!page?.has_more;
+    const nextOffset = Number.isFinite(page?.next_offset) ? page.next_offset : examples.length;
+    cell.dataset.moreOffset = String(nextOffset);
+    cell.dataset.moreHasMore = hasMore ? '1' : '0';
+
     let html = `<div class="examples-inline"><div class="examples-inline-title">📝 "${escapeHtml(word)}" 的聊天示例：</div>`;
     
     examples.forEach((example, index) => {
@@ -294,12 +318,65 @@ function showExamplesInline(cell, examples, word) {
     });
     
     html += '</div>';
+    if (hasMore) {
+        html += `<div class="examples-more"><button class="btn btn-secondary examples-more-btn" type="button">更多示例</button></div>`;
+    }
     cell.innerHTML = html;
+
+    const moreBtn = cell.querySelector('.examples-more-btn');
+    if (moreBtn) {
+        moreBtn.onclick = async (e) => {
+            e.stopPropagation();
+            try {
+                moreBtn.disabled = true;
+                moreBtn.textContent = '加载中...';
+
+                const offset = parseInt(cell.dataset.moreOffset || '0', 10) || 0;
+                const morePage = await fetchWordExamples(word, containerId, { qqId, offset, limit: 8 });
+                const moreExamples = morePage?.examples || [];
+
+                // 追加到当前内容
+                const holder = cell.querySelector('.examples-inline');
+                if (holder && moreExamples.length) {
+                    moreExamples.forEach((example) => {
+                        const item = document.createElement('div');
+                        item.className = 'inline-example-item';
+                        item.innerHTML = `
+                            <div class="inline-example-meta">
+                                <span class="inline-example-sender">${escapeHtml(example.sender)}</span>
+                                <span class="inline-example-time">${escapeHtml(example.timestamp)}</span>
+                            </div>
+                            <div class="inline-example-content">${escapeHtml(example.content)}</div>
+                        `;
+                        holder.appendChild(item);
+                    });
+                }
+
+                const newOffset = Number.isFinite(morePage?.next_offset)
+                    ? morePage.next_offset
+                    : offset + moreExamples.length;
+                cell.dataset.moreOffset = String(newOffset);
+                cell.dataset.moreHasMore = morePage?.has_more ? '1' : '0';
+
+                if (!morePage?.has_more || !moreExamples.length) {
+                    // 没有更多了
+                    moreBtn.remove();
+                } else {
+                    moreBtn.disabled = false;
+                    moreBtn.textContent = '更多示例';
+                }
+            } catch (err) {
+                console.error('加载更多示例失败:', err);
+                moreBtn.disabled = false;
+                moreBtn.textContent = '更多示例';
+            }
+        };
+    }
     
     // 点击收起
     cell.querySelector('.examples-inline').onclick = (e) => {
         e.stopPropagation();
-        showExamplesInline(cell, examples, word);
+        showExamplesInline(cell, page, word, containerId, qqId);
     };
 }
 

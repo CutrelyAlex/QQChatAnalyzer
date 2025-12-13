@@ -1246,6 +1246,20 @@ def get_chat_examples():
         word = request.args.get('word', '').strip()
         filename = request.args.get('file', '')
         qq = request.args.get('qq', '')  # 可选：个人分析时传入
+
+        # 可选：分页
+        try:
+            limit = int(request.args.get('limit', 4) or 4)
+        except Exception:
+            limit = 4
+        try:
+            offset = int(request.args.get('offset', 0) or 0)
+        except Exception:
+            offset = 0
+
+        # 安全限制，避免一次返回过多
+        limit = max(1, min(limit, 50))
+        offset = max(0, offset)
         
         if not word or not filename:
             return jsonify({'success': False, 'error': '缺少必要参数'}), 400
@@ -1278,30 +1292,43 @@ def get_chat_examples():
                 })
             _CHAT_EXAMPLES_CACHE[filename] = {'mtime': file_mtime, 'ver': _CHAT_EXAMPLES_CLEANER_VERSION, 'records': records}
         
-        # 过滤包含热词的消息
+        # 过滤包含热词的消息（支持 offset/limit）
         examples = []
+        matched = 0
+        has_more = False
         for rec in records:
             # 如果指定了QQ，则只查找该QQ的消息
-            if qq and rec['qq'] != qq:
+            if qq and rec.get('qq') != qq:
                 continue
-            
+
+            ct = rec.get('clean_text') or ''
+            if not ct:
+                continue
+
             # 在清理后的文本中查找热词
-            if word in rec['clean_text']:
-                examples.append({
-                    'timestamp': rec['timestamp'],
-                    'sender': rec['sender'],
-                    'qq': rec['qq'],
-                    'content': rec['clean_text']  # 显示清理后的文本
-                })
-            
-            # 最多获取4条示例
-            if len(examples) >= 4:
-                break
+            if word in ct:
+                if matched >= offset and len(examples) < limit:
+                    examples.append({
+                        'timestamp': rec.get('timestamp', ''),
+                        'sender': rec.get('sender', ''),
+                        'qq': rec.get('qq', ''),
+                        'content': ct  # 显示清理后的文本
+                    })
+                matched += 1
+
+                # 已拿满本页后，继续往后探测是否还有更多
+                if len(examples) >= limit and matched > (offset + limit - 1):
+                    has_more = True
+                    break
         
         return jsonify({
             'success': True,
             'word': word,
-            'examples': examples
+            'examples': examples,
+            'offset': offset,
+            'limit': limit,
+            'next_offset': offset + len(examples),
+            'has_more': bool(has_more)
         })
     except Exception as e:
         logger.error(f"Error getting chat examples: {e}")
