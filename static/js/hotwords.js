@@ -276,18 +276,16 @@ function showExamplesInline(cell, examples, word) {
     
     // 展开显示所有示例
     cell.dataset.expanded = 'true';
-    let html = `<div class="examples-inline"><div style="font-weight: bold; margin-bottom: 8px;">📝 "${word}" 的聊天示例：</div>`;
+    let html = `<div class="examples-inline"><div class="examples-inline-title">📝 "${escapeHtml(word)}" 的聊天示例：</div>`;
     
     examples.forEach((example, index) => {
         html += `
-            <div class="inline-example-item" style="margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid #eee;">
-                <div style="font-size: 11px; color: #999;">
-                    <span style="font-weight: 600; color: #333;">${escapeHtml(example.sender)}</span>
-                    <span>${example.timestamp}</span>
+            <div class="inline-example-item">
+                <div class="inline-example-meta">
+                    <span class="inline-example-sender">${escapeHtml(example.sender)}</span>
+                    <span class="inline-example-time">${escapeHtml(example.timestamp)}</span>
                 </div>
-                <div style="font-size: 12px; color: #333; word-break: break-word; margin-top: 4px;">
-                    ${escapeHtml(example.content)}
-                </div>
+                <div class="inline-example-content">${escapeHtml(example.content)}</div>
             </div>
         `;
     });

@@ -1,0 +1,299 @@
+/* ======================================
+   QQ聊天记录分析系统 - 易读风格 CSS
+   ====================================== */
+
+/* 仅在易读风格启用时生效 */
+html[data-theme="readable"] {
+    color-scheme: light;
+}
+
+html[data-theme="readable"]::before {
+    /* 关闭扫描线覆盖层 */
+    content: none !important;
+    display: none !important;
+    background: none !important;
+}
+
+html[data-theme="readable"],
+html[data-theme="readable"] body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #f6f7fb !important;
+    color: #1f2328 !important;
+    background-image: none !important;
+}
+
+html[data-theme="readable"] :root,
+html[data-theme="readable"] {
+    /* 通过变量尽量复用原 CSS 的结构 */
+    --primary-color: #2563eb;
+    --primary-hover: #1d4ed8;
+    --primary-active: #1e40af;
+
+    --secondary-color: #6b7280;
+    --secondary-hover: #4b5563;
+
+    --accent-cyan: #2563eb;
+    --accent-yellow: #f59e0b;
+    --accent-pink: #db2777;
+
+    --success-color: #16a34a;
+    --danger-color: #dc2626;
+    --warning-color: #f59e0b;
+
+    --bg-color: #f6f7fb;
+    --bg-light: #ffffff;
+    --bg-accent: #ffffff;
+    --border-color: #e5e7eb;
+    --text-color: #1f2328;
+    --text-secondary: #4b5563;
+    --text-tertiary: #6b7280;
+
+    --border-radius: 10px;
+    --box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    --box-shadow-lg: 0 14px 40px rgba(15, 23, 42, 0.12);
+    --glow-shadow: none;
+}
+
+/* 主容器 */
+html[data-theme="readable"] .container {
+    background: transparent !important;
+    border-left: none !important;
+    border-right: none !important;
+}
+
+/* 头部 */
+html[data-theme="readable"] .header {
+    background: #ffffff !important;
+    color: #111827 !important;
+    border-bottom: 1px solid #e5e7eb !important;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08) !important;
+    text-shadow: none !important;
+}
+
+html[data-theme="readable"] .app-title {
+    text-shadow: none !important;
+    letter-spacing: 0.2px !important;
+}
+
+/* 标题区域不需要任何荧光/霓虹效果 */
+html[data-theme="readable"] .app-title,
+html[data-theme="readable"] .tab-header h2,
+html[data-theme="readable"] .panel-header h2,
+html[data-theme="readable"] .chart-container h3 {
+    text-shadow: none !important;
+}
+
+/* 右上角切换按钮更紧凑 */
+html[data-theme="readable"] .theme-toggle-btn {
+    border-radius: 999px !important;
+}
+
+/* 面板卡片 */
+html[data-theme="readable"] .file-panel,
+html[data-theme="readable"] .tabs-container {
+    background: #ffffff !important;
+    border: 1px solid #e5e7eb !important;
+    box-shadow: var(--box-shadow) !important;
+}
+
+html[data-theme="readable"] .panel-header {
+    border-bottom: 1px solid #e5e7eb !important;
+}
+
+html[data-theme="readable"] .panel-header h2 {
+    color: #111827 !important;
+    text-shadow: none !important;
+}
+
+/* Tabs */
+html[data-theme="readable"] .tabs-header {
+    background: #ffffff !important;
+    border-bottom: 1px solid #e5e7eb !important;
+}
+
+html[data-theme="readable"] .tab-button {
+    color: #374151 !important;
+    text-transform: none !important;
+    letter-spacing: 0 !important;
+}
+
+html[data-theme="readable"] .tab-button:hover {
+    background: rgba(37, 99, 235, 0.08) !important;
+    color: #1d4ed8 !important;
+    text-shadow: none !important;
+}
+
+html[data-theme="readable"] .tab-button.active {
+    color: #1d4ed8 !important;
+    border-bottom-color: #1d4ed8 !important;
+    background: rgba(37, 99, 235, 0.10) !important;
+    text-shadow: none !important;
+}
+
+/* Buttons */
+html[data-theme="readable"] .btn {
+    font-family: inherit !important;
+    text-transform: none !important;
+    letter-spacing: 0 !important;
+    border-radius: 10px !important;
+}
+
+html[data-theme="readable"] .btn-primary {
+    background: #2563eb !important;
+    border: 1px solid #2563eb !important;
+    color: #ffffff !important;
+    text-shadow: none !important;
+}
+
+html[data-theme="readable"] .btn-primary:hover:not(:disabled) {
+    background: #1d4ed8 !important;
+    box-shadow: 0 10px 20px rgba(37, 99, 235, 0.18) !important;
+}
+
+html[data-theme="readable"] .btn-secondary {
+    background: #ffffff !important;
+    border: 1px solid #d1d5db !important;
+    color: #111827 !important;
+    text-shadow: none !important;
+}
+
+html[data-theme="readable"] .btn-secondary:hover:not(:disabled) {
+    background: #f3f4f6 !important;
+    box-shadow: none !important;
+}
+
+/* 输入框 */
+html[data-theme="readable"] .file-input,
+html[data-theme="readable"] input,
+html[data-theme="readable"] select,
+html[data-theme="readable"] textarea {
+    background: #ffffff !important;
+    color: #111827 !important;
+    border: 1px solid #d1d5db !important;
+    box-shadow: none !important;
+}
+
+/* 输入框“示例”(placeholder) 颜色 */
+html[data-theme="readable"] .file-input::placeholder,
+html[data-theme="readable"] input::placeholder,
+html[data-theme="readable"] textarea::placeholder,
+html[data-theme="readable"] .input-group input::placeholder,
+html[data-theme="readable"] .config-input::placeholder {
+    color: #9ca3af !important;
+}
+
+/* ======================================
+   图表区域（容器与标题）
+   注：Chart.js 文字是画在 canvas 上的，CSS 能覆盖容器/标题/滤镜
+   ====================================== */
+
+html[data-theme="readable"] .chart-container {
+    background: #ffffff !important;
+    border: 1px solid #e5e7eb !important;
+    box-shadow: var(--box-shadow) !important;
+}
+
+html[data-theme="readable"] .chart-container h3 {
+    color: #111827 !important;
+    letter-spacing: 0 !important;
+    font-family: inherit !important;
+}
+
+html[data-theme="readable"] .chart-container canvas {
+    filter: none !important;
+}
+
+html[data-theme="readable"] #message-type-chart {
+    filter: none !important;
+}
+
+/* ======================================
+   底部栏位
+   ====================================== */
+
+html[data-theme="readable"] .footer {
+    background: #ffffff !important;
+    border-top: 1px solid #e5e7eb !important;
+    color: #6b7280 !important;
+    box-shadow: none !important;
+    font-family: inherit !important;
+}
+
+html[data-theme="readable"] .separator {
+    color: #9ca3af !important;
+}
+
+html[data-theme="readable"] .footer-disclaimer {
+    border-top: 1px solid #e5e7eb !important;
+}
+
+html[data-theme="readable"] .disclaimer-text {
+    color: #6b7280 !important;
+    text-shadow: none !important;
+}
+
+/* 热词区：更像普通表格 */
+html[data-theme="readable"] .hot-words-container {
+    background: #ffffff !important;
+    border: 1px solid #e5e7eb !important;
+    box-shadow: none !important;
+}
+
+html[data-theme="readable"] .hot-words-table thead {
+    background: #f9fafb !important;
+    color: #111827 !important;
+    border: 1px solid #e5e7eb !important;
+}
+
+html[data-theme="readable"] .hot-words-table th {
+    border-bottom: 1px solid #e5e7eb !important;
+    text-transform: none !important;
+}
+
+html[data-theme="readable"] .word-highlight {
+    background: rgba(37, 99, 235, 0.10) !important;
+    border: 1px solid rgba(37, 99, 235, 0.25) !important;
+    color: #1d4ed8 !important;
+    text-shadow: none !important;
+}
+
+/* 热词示例：确保在易读风格时仍然舒服 */
+html[data-theme="readable"] .examples-inline {
+    background: #ffffff !important;
+    border: 1px solid #e5e7eb !important;
+}
+
+html[data-theme="readable"] .examples-inline-title {
+    font-weight: 700 !important;
+    margin-bottom: 8px !important;
+    color: #111827 !important;
+}
+
+html[data-theme="readable"] .inline-example-item {
+    background: #f9fafb !important;
+    color: #111827 !important;
+    margin-bottom: 8px !important;
+    border-bottom: 1px solid #e5e7eb !important;
+}
+
+html[data-theme="readable"] .inline-example-item:last-child {
+    margin-bottom: 0 !important;
+    border-bottom: none !important;
+}
+
+html[data-theme="readable"] .inline-example-meta {
+    color: #6b7280 !important;
+}
+
+html[data-theme="readable"] .inline-example-sender {
+    color: #111827 !important;
+}
+
+html[data-theme="readable"] .inline-example-content {
+    color: #111827 !important;
+}
+
+/* 网络按钮行：避免被压缩 */
+html[data-theme="readable"] .network-layout-actions {
+    gap: 10px !important;
+}

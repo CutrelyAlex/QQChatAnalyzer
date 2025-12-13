@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QQ聊天记录分析系统</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-readable.css') }}">
     <!-- Chart.js用于绘制图表 -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
     <!-- vis.js用于社交网络可视化 -->
@@ -17,6 +18,9 @@
             <div class="header-content">
                 <h1 class="app-title">💬 QQ聊天记录分析系统</h1>
                 <div class="header-controls">
+                    <button id="theme-toggle-btn" class="btn btn-secondary theme-toggle-btn" type="button" title="切换为更易阅读的风格">
+                        易读风格
+                    </button>
                     <div class="status-indicator">
                         <span id="ai-status" class="status-badge disabled">AI离线</span>
                     </div>
@@ -297,9 +301,20 @@
                             </div>
                         </div>
 
-                        <button id="network-analyze-btn" class="btn btn-primary">
-                            生成网络图
-                        </button>
+                        <div class="network-layout-actions" style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0;">
+                            <button id="network-analyze-btn" class="btn btn-primary">
+                                生成网络图
+                            </button>
+                            <button id="layout-circle-btn" class="btn btn-secondary" type="button" title="圆形排布">
+                                圆形排布
+                            </button>
+                            <button id="layout-tree-btn" class="btn btn-secondary" type="button" title="树状排布">
+                                树状排布
+                            </button>
+                            <button id="layout-smart-btn" class="btn btn-secondary" type="button" title="智能排布">
+                                智能排布
+                            </button>
+                        </div>
 
                         <!-- 分析进度条 -->
                         <div id="network-progress" class="progress-container" style="display: none;">
@@ -719,6 +734,7 @@
     <script src="{{ url_for('static', filename='js/ui.js') }}"></script>
     <script src="{{ url_for('static', filename='js/network.js') }}"></script>
     <script src="{{ url_for('static', filename='js/hotwords.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/theme-toggle.js') }}"></script>
     <script src="{{ url_for('static', filename='js/config.js') }}"></script>
 </body>
 </html>

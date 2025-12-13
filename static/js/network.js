@@ -7,6 +7,10 @@
 let originalNetworkData = { nodes: [], edges: [] }; // 存储原始数据
 let currentNetworkLimits = { maxNodes: 100, maxEdges: 300 }; // 当前限制
 
+// 布局/交互需要访问当前网络实例
+window.currentNetwork = null;
+window.currentNetworkData = null;
+
 // ============ 社交网络图表函数 ============
 
 function renderNetworkGraph(nodes, edges) {
@@ -19,6 +23,10 @@ function renderNetworkGraph(nodes, edges) {
         nodes: JSON.parse(JSON.stringify(nodes)),
         edges: JSON.parse(JSON.stringify(edges))
     };
+
+    // 当前交互模式：none | node | edge
+    let focusMode = 'none';
+    let focusedEdgeId = null;
     
     // ============ 配置：最大节点和边数量 ============
     const MAX_NODES = currentNetworkLimits.maxNodes;
@@ -198,6 +206,31 @@ function renderNetworkGraph(nodes, edges) {
         registerEdge(edge.from, edge.id);
         registerEdge(edge.to, edge.id);
     });
+
+    // 缓存基础样式（用于清除选择/恢复视图）
+    const nodeBaseCache = {};
+    const edgeBaseCache = {};
+
+    visNodes.forEach(n => {
+        nodeBaseCache[n.id] = {
+            label: n.label,
+            title: n.title,
+            color: JSON.parse(JSON.stringify(n.color || {})),
+            font: JSON.parse(JSON.stringify(n.font || {})),
+            borderWidth: n.borderWidth,
+            size: n.size
+        };
+    });
+
+    visEdges.forEach(e => {
+        edgeBaseCache[e.id] = {
+            hidden: !!e.hidden,
+            label: e.label || '',
+            width: e.width,
+            color: JSON.parse(JSON.stringify(e.color || {})),
+            smooth: JSON.parse(JSON.stringify(e.smooth || {}))
+        };
+    });
     
     // 配置选项 - 禁用物理模拟（使用固定布局）
     const options = {
@@ -272,6 +305,10 @@ function renderNetworkGraph(nodes, edges) {
     };
     
     const network = new vis.Network(container, data, options);
+
+    // 供布局按钮使用
+    window.currentNetwork = network;
+    window.currentNetworkData = data;
     
     // 初始适配视图
     network.once('afterDrawing', () => {
@@ -287,11 +324,34 @@ function renderNetworkGraph(nodes, edges) {
     let selectedNode = null;
     let isProcessing = false;  // 防止重复处理
 
+    const focusOnNode = (nodeId, scale = 1.25) => {
+        try {
+            // focus 会把节点移动到视窗中心，并可设置缩放
+            network.focus(nodeId, {
+                scale,
+                animation: {
+                    duration: 350,
+                    easingFunction: 'easeInOutQuad'
+                }
+            });
+        } catch (_) {
+            // ignore
+        }
+    };
+
     const BATCH_SIZE = 50;
     const processEdgeUpdates = async (updates) => {
         for (let i = 0; i < updates.length; i += BATCH_SIZE) {
             const batch = updates.slice(i, i + BATCH_SIZE);
             data.edges.update(batch);
+            await new Promise(resolve => setTimeout(resolve, 5));
+        }
+    };
+
+    const processNodeUpdates = async (updates) => {
+        for (let i = 0; i < updates.length; i += BATCH_SIZE) {
+            const batch = updates.slice(i, i + BATCH_SIZE);
+            data.nodes.update(batch);
             await new Promise(resolve => setTimeout(resolve, 5));
         }
     };
@@ -323,6 +383,122 @@ function renderNetworkGraph(nodes, edges) {
             isProcessing = false;
         }
     }
+
+    async function restoreAllNetworkStyles() {
+        if (isProcessing) return;
+        isProcessing = true;
+
+        try {
+            focusMode = 'none';
+            focusedEdgeId = null;
+
+            const nodeUpdates = visNodes.map(n => {
+                const base = nodeBaseCache[n.id] || {};
+                return {
+                    id: n.id,
+                    label: base.label,
+                    title: base.title,
+                    color: base.color,
+                    font: base.font,
+                    borderWidth: base.borderWidth,
+                    size: base.size
+                };
+            });
+
+            const edgeUpdates = visEdges.map(e => {
+                const base = edgeBaseCache[e.id] || {};
+                return {
+                    id: e.id,
+                    hidden: false,
+                    label: edgeLabelCache[e.id] || base.label || '',
+                    width: base.width,
+                    color: base.color,
+                    smooth: base.smooth
+                };
+            });
+
+            await processNodeUpdates(nodeUpdates);
+            await processEdgeUpdates(edgeUpdates);
+            network.unselectAll();
+        } finally {
+            isProcessing = false;
+        }
+    }
+
+    async function applyEdgeFocus(edgeId) {
+        const edge = visEdges.find(e => e.id === edgeId);
+        if (!edge) return;
+
+        // 先恢复为“显示所有边”，避免之前点过节点导致边被隐藏
+        await updateEdgesVisibility(null);
+
+        if (isProcessing) return;
+        isProcessing = true;
+
+        try {
+            focusMode = 'edge';
+            focusedEdgeId = edgeId;
+            selectedNode = null;
+
+            const endpointIds = new Set([edge.from, edge.to]);
+            const dimNodeColor = {
+                background: 'rgba(255, 127, 0, 0.12)',
+                border: 'rgba(204, 102, 0, 0.18)',
+                highlight: { background: 'rgba(255, 127, 0, 0.12)', border: 'rgba(204, 102, 0, 0.18)' }
+            };
+            const dimFont = {
+                size: 10,
+                color: 'rgba(255, 255, 255, 0.25)',
+                bold: {}
+            };
+
+            const nodeUpdates = visNodes.map(n => {
+                const base = nodeBaseCache[n.id] || {};
+                const baseLabel = base.label || n.label || n.id;
+                const isEndpoint = endpointIds.has(n.id);
+
+                // 端点节点：高亮显示“昵称 + QQ号”，其他节点：仅昵称，并整体变淡
+                const endpointLabel = (baseLabel === n.id) ? `${n.id}` : `${baseLabel}\n${n.id}`;
+
+                return {
+                    id: n.id,
+                    label: isEndpoint ? endpointLabel : baseLabel,
+                    color: isEndpoint ? base.color : dimNodeColor,
+                    font: isEndpoint ? base.font : dimFont,
+                    borderWidth: isEndpoint ? Math.max(base.borderWidth || 2, 3) : 1,
+                    size: isEndpoint ? Math.max(base.size || 15, 22) : Math.max(10, (base.size || 15) * 0.75)
+                };
+            });
+
+            const edgeUpdates = visEdges.map(e => {
+                const base = edgeBaseCache[e.id] || {};
+                const isSelected = e.id === edgeId;
+                return {
+                    id: e.id,
+                    hidden: false,
+                    label: isSelected ? (edgeLabelCache[e.id] || base.label || '') : '',
+                    width: isSelected ? Math.max((base.width || 1) * 2.0, 2) : Math.max((base.width || 1) * 0.4, 0.2),
+                    color: isSelected
+                        ? {
+                            color: (base.color && base.color.highlight) ? base.color.highlight : 'rgba(64, 169, 255, 0.9)',
+                            highlight: (base.color && base.color.highlight) ? base.color.highlight : 'rgba(64, 169, 255, 0.9)'
+                        }
+                        : {
+                            color: 'rgba(24, 144, 255, 0.06)',
+                            highlight: 'rgba(24, 144, 255, 0.06)'
+                        }
+                };
+            });
+
+            await processNodeUpdates(nodeUpdates);
+            await processEdgeUpdates(edgeUpdates);
+
+            network.selectEdges([edgeId]);
+            network.selectNodes([edge.from, edge.to]);
+        } finally {
+            isProcessing = false;
+        }
+    }
     
     // 添加点击事件
     network.on('click', async function(params) {
@@ -330,6 +506,11 @@ function renderNetworkGraph(nodes, edges) {
         
         // 点击节点
         if (params.nodes.length > 0) {
+            // 如果之前处于“边聚焦”，先恢复
+            if (focusMode === 'edge') {
+                await restoreAllNetworkStyles();
+            }
+
             const nodeId = params.nodes[0];
             const node = visNodes.find(n => n.id === nodeId);
             if (node) {
@@ -346,12 +527,16 @@ function renderNetworkGraph(nodes, edges) {
                 
                 // 设置新的选中节点
                 selectedNode = nodeId;
+                focusMode = 'node';
                 
                 // 异步隐藏无关的边
                 await updateEdgesVisibility(nodeId);
                 
                 // 高亮选中的节点
                 network.selectNodes([nodeId]);
+
+                // 视图居中到选中的节点（适用于所有布局）
+                focusOnNode(nodeId, 1.35);
                 
                 // 显示最终的状态消息
                 showStatusMessage('info', `${isCore ? '🌟 核心成员' : '👤 成员'}: ${node.label} (连接数: ${degree})`);
@@ -362,38 +547,27 @@ function renderNetworkGraph(nodes, edges) {
             const edgeId = params.edges[0];
             const edge = visEdges.find(e => e.id === edgeId);
             if (edge) {
-                // 高亮这条边连接的两个节点
+                await applyEdgeFocus(edgeId);
+
                 const fromNode = visNodes.find(n => n.id === edge.from);
                 const toNode = visNodes.find(n => n.id === edge.to);
-                
-                if (fromNode && toNode) {
-                    network.selectNodes([edge.from, edge.to]);
-                    
-                    const fromLabel = fromNode.label || edge.from;
-                    const toLabel = toNode.label || edge.to;
-                    showStatusMessage('info', `🔗 ${fromLabel} ↔ ${toLabel} (强度: ${edge.value.toFixed(2)})`);
-                }
+                const fromLabel = (fromNode && (nodeBaseCache[fromNode.id]?.label || fromNode.label)) || edge.from_name || edge.from;
+                const toLabel = (toNode && (nodeBaseCache[toNode.id]?.label || toNode.label)) || edge.to_name || edge.to;
+                showStatusMessage('info', `🔗 ${fromLabel}(${edge.from}) ↔ ${toLabel}(${edge.to}) (强度: ${edge.value.toFixed(2)})`);
             }
         } 
         // 点击空白处
         else {
-            // 恢复所有边的显示
-            if (selectedNode !== null) {
-                selectedNode = null;
-                await updateEdgesVisibility(null);  // 显示所有边
-                network.unselectAll();
-                showStatusMessage('success', '✅ 已清除选择');
-            }
+            selectedNode = null;
+            await restoreAllNetworkStyles();
+            showStatusMessage('success', '✅ 已清除选择');
         }
     });
     
     // 双击事件：重置视图并恢复所有边
     network.on('doubleClick', async function() {
-        if (selectedNode !== null) {
-            selectedNode = null;
-            await updateEdgesVisibility(null);  // 显示所有边
-            network.unselectAll();
-        }
+        selectedNode = null;
+        await restoreAllNetworkStyles();
         network.fit({
             animation: {
                 duration: 300,
@@ -403,8 +577,7 @@ function renderNetworkGraph(nodes, edges) {
 
     });
     
-    // 存储网络实例供后续使用
-    window.currentNetwork = network;
+    // 存储网络实例供后续使用（window.currentNetwork 已在上面赋值）
     
     // 添加图例说明
     addNetworkLegend(container, coreCount, outerNodes.length);
@@ -475,9 +648,294 @@ function initNetworkControls() {
     });
 }
 
+// ============ 网络图布局按钮 ============
+
+function initNetworkLayoutButtons() {
+    const btnCircle = document.getElementById('layout-circle-btn');
+    const btnTree = document.getElementById('layout-tree-btn');
+    const btnSmart = document.getElementById('layout-smart-btn');
+
+    let smartLayoutBusy = false;
+
+    const requireNetwork = () => {
+        if (!window.currentNetwork || !window.currentNetworkData) {
+            showStatusMessage('error', '请先生成网络图');
+            return false;
+        }
+        return true;
+    };
+
+    const applyCircularLayout = () => {
+        if (!requireNetwork()) return;
+        const network = window.currentNetwork;
+        const data = window.currentNetworkData;
+        const container = document.getElementById('network-graph');
+        const nodes = data.nodes.get();
+        const edges = data.edges.get();
+
+        if (!nodes.length) return;
+
+        // 度数
+        const deg = {};
+        nodes.forEach(n => { deg[n.id] = 0; });
+        edges.forEach(e => {
+            if (deg[e.from] !== undefined) deg[e.from] += 1;
+            if (deg[e.to] !== undefined) deg[e.to] += 1;
+        });
+
+        const sorted = [...nodes].sort((a, b) => (deg[b.id] || 0) - (deg[a.id] || 0));
+        const coreCount = Math.max(3, Math.min(8, Math.floor(nodes.length * 0.15)));
+        const coreIds = new Set(sorted.slice(0, coreCount).map(n => n.id));
+
+        const rect = container ? container.getBoundingClientRect() : { width: 900, height: 600 };
+        const centerX = 0;
+        const centerY = 0;
+        const outerRadius = Math.min(rect.width, rect.height) * 0.35 || 350;
+        const innerRadius = outerRadius * 0.25;
+
+        const inner = sorted.filter(n => coreIds.has(n.id));
+        const outer = sorted.filter(n => !coreIds.has(n.id));
+
+        const pos = {};
+        if (inner.length) {
+            inner.forEach((n, idx) => {
+                const angle = (2 * Math.PI * idx) / inner.length - Math.PI / 2;
+                pos[n.id] = { x: centerX + innerRadius * Math.cos(angle), y: centerY + innerRadius * Math.sin(angle) };
+            });
+        }
+        if (outer.length) {
+            outer.forEach((n, idx) => {
+                const angle = (2 * Math.PI * idx) / outer.length - Math.PI / 2;
+                pos[n.id] = { x: centerX + outerRadius * Math.cos(angle), y: centerY + outerRadius * Math.sin(angle) };
+            });
+        }
+
+        data.nodes.update(nodes.map(n => ({ id: n.id, x: pos[n.id]?.x ?? 0, y: pos[n.id]?.y ?? 0 })));
+        network.setOptions({
+            physics: { enabled: false },
+            layout: { improvedLayout: false, hierarchical: { enabled: false } },
+            edges: { smooth: { enabled: true, type: 'continuous', roundness: 0.2 } }
+        });
+        network.fit({ animation: { duration: 500, easingFunction: 'easeInOutQuad' } });
+        showStatusMessage('success', '✅ 已切换：圆形排布');
+    };
+
+    const applyTreeLayout = () => {
+        if (!requireNetwork()) return;
+        const network = window.currentNetwork;
+        const data = window.currentNetworkData;
+        const nodes = data.nodes.get();
+        const edges = data.edges.get();
+
+        if (!nodes.length) return;
+
+        // 选择度数最高的节点为根
+        const deg = {};
+        nodes.forEach(n => { deg[n.id] = 0; });
+        edges.forEach(e => {
+            if (deg[e.from] !== undefined) deg[e.from] += 1;
+            if (deg[e.to] !== undefined) deg[e.to] += 1;
+        });
+        const root = nodes.reduce((best, n) => ((deg[n.id] || 0) > (deg[best] || 0) ? n.id : best), nodes[0].id);
+
+        // BFS 计算“最短距离层级”（原始层级）
+        const adj = {};
+        nodes.forEach(n => { adj[n.id] = []; });
+        edges.forEach(e => {
+            if (adj[e.from]) adj[e.from].push(e.to);
+            if (adj[e.to]) adj[e.to].push(e.from);
+        });
+
+        const dist = {};
+        const q = [root];
+        dist[root] = 0;
+        while (q.length) {
+            const u = q.shift();
+            const nextD = (dist[u] ?? 0) + 1;
+            for (const v of (adj[u] || [])) {
+                if (dist[v] === undefined) {
+                    dist[v] = nextD;
+                    q.push(v);
+                }
+            }
+        }
+
+        // 目标层容量：1-4-8-16-32-32-32...
+        const capForLevel = (lvl) => {
+            if (lvl <= 0) return 1;
+            if (lvl === 1) return 4;
+            if (lvl === 2) return 8;
+            if (lvl === 3) return 16;
+            return 32;
+        };
+
+        const assigned = {};
+        assigned[root] = 0;
+        const used = { 0: 1 };
+
+        const maxDist = Object.values(dist).reduce((m, v) => Math.max(m, v), 0);
+        const fallbackDist = maxDist + 1;
+
+        const nodesSorted = nodes
+            .filter(n => n.id !== root)
+            .map(n => ({
+                id: n.id,
+                d: dist[n.id] ?? fallbackDist,
+                deg: deg[n.id] || 0
+            }))
+            .sort((a, b) => (a.d - b.d) || (b.deg - a.deg) || String(a.id).localeCompare(String(b.id)));
+
+        const pickLevel = (minLevel) => {
+            let lvl = Math.max(1, minLevel);
+            while (true) {
+                const cap = capForLevel(lvl);
+                const cur = used[lvl] || 0;
+                if (cur < cap) return lvl;
+                lvl += 1;
+            }
+        };
+
+        for (const n of nodesSorted) {
+            const lvl = pickLevel(n.d);
+            assigned[n.id] = lvl;
+            used[lvl] = (used[lvl] || 0) + 1;
+        }
+
+        data.nodes.update(nodes.map(n => ({ id: n.id, level: assigned[n.id] ?? fallbackDist, x: null, y: null })));
+        network.setOptions({
+            physics: { enabled: false },
+            layout: {
+                improvedLayout: true,
+                hierarchical: {
+                    enabled: true,
+                    direction: 'UD',
+                    sortMethod: 'hubsize',
+                    levelSeparation: 120,
+                    nodeSpacing: 140,
+                    treeSpacing: 220
+                }
+            },
+            edges: { smooth: { enabled: true, type: 'cubicBezier', roundness: 0.2 } }
+        });
+        network.fit({ animation: { duration: 600, easingFunction: 'easeInOutQuad' } });
+        showStatusMessage('success', '✅ 已切换：树状排布');
+    };
+
+    const applySmartLayout = () => {
+        if (!requireNetwork()) return;
+        const network = window.currentNetwork;
+        const data = window.currentNetworkData;
+
+        if (smartLayoutBusy) {
+            showStatusMessage('warning', '⏳ 智能排布正在计算中...');
+            return;
+        }
+        smartLayoutBusy = true;
+        if (btnSmart) btnSmart.disabled = true;
+
+        showStatusMessage('info', '⏳ 智能排布计算中（先重置位置，再模拟几次以避免树状→智能错位）...');
+
+        let finished = false;
+        const finish = () => {
+            if (finished) return;
+            finished = true;
+            smartLayoutBusy = false;
+            if (btnSmart) btnSmart.disabled = false;
+
+            try {
+                if (typeof network.stopSimulation === 'function') network.stopSimulation();
+            } catch (_) {
+                // ignore
+            }
+
+            network.setOptions({ physics: { enabled: false } });
+            network.fit({ animation: { duration: 600, easingFunction: 'easeInOutQuad' } });
+            showStatusMessage('success', '✅ 智能排布完成');
+        };
+
+        // 关键：从树状排布切到智能排布时，先把所有点重置到 (0,0)
+        // 这样可以避免 vis-network 继承上一次的层级布局结果导致“看起来没反应/错位”。
+        try {
+            const nodes = data.nodes.get();
+            if (nodes && nodes.length) {
+                data.nodes.update(nodes.map(n => ({
+                    id: n.id,
+                    x: 0,
+                    y: 0,
+                    // 解除固定（若之前布局/拖动导致固定）
+                    fixed: { x: false, y: false },
+                    // 取消层级字段的影响（hierarchical 关闭后一般不影响，但保守处理）
+                    level: undefined
+                })));
+            }
+        } catch (_) {
+            // ignore
+        }
+
+        network.setOptions({
+            layout: { improvedLayout: true, hierarchical: { enabled: false } },
+            physics: {
+                enabled: true,
+                // barnesHut 通常比 forceAtlas2Based 更不容易“卡住”
+                solver: 'barnesHut',
+                barnesHut: {
+                    gravitationalConstant: -1800,
+                    centralGravity: 0.12,
+                    springLength: 140,
+                    springConstant: 0.04,
+                    damping: 0.35,
+                    avoidOverlap: 0.2
+                },
+                stabilization: { enabled: true, iterations: 160, updateInterval: 25 }
+            },
+            edges: { smooth: { enabled: true, type: 'straightCross', roundness: 0.15 } }
+        });
+
+        // 强制刷新一次，确保“重置到 0,0”立即生效
+        try {
+            if (typeof network.redraw === 'function') network.redraw();
+        } catch (_) {
+            // ignore
+        }
+
+        // 事件在不同版本/状态下不一定触发，做多通道兜底
+        try {
+            network.once('stabilizationIterationsDone', finish);
+            network.once('stabilized', finish);
+        } catch (_) {
+            // ignore
+        }
+
+        // 让 UI 先刷新，再触发 stabilize，降低“看起来卡住”的概率
+        setTimeout(() => {
+            try {
+                // 分几次短 stabilize，比一次长 stabilize 更不容易让用户觉得“没反应”
+                network.stabilize(60);
+                setTimeout(() => {
+                    try { network.stabilize(60); } catch (_) { /* ignore */ }
+                }, 50);
+                setTimeout(() => {
+                    try { network.stabilize(60); } catch (_) { /* ignore */ }
+                }, 100);
+            } catch (_) {
+                // ignore
+            }
+        }, 0);
+
+        // 安全超时：避免永远不触发事件导致“卡住”
+        setTimeout(finish, 2200);
+    };
+
+    if (btnCircle) btnCircle.addEventListener('click', applyCircularLayout);
+    if (btnTree) btnTree.addEventListener('click', applyTreeLayout);
+    if (btnSmart) btnSmart.addEventListener('click', applySmartLayout);
+}
+
 // 页面加载时初始化控制面板
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initNetworkControls);
+    document.addEventListener('DOMContentLoaded', initNetworkLayoutButtons);
 } else {
     initNetworkControls();
+    initNetworkLayoutButtons();
 }
