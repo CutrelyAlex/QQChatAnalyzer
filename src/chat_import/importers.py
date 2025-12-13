@@ -107,6 +107,51 @@ def _parse_timestamp_ms(value: Any) -> Optional[int]:
     return None
 
 
+def _detect_system_and_recall_from_raw_message(raw_message: Any) -> Tuple[bool, bool]:
+    """从 exporter 的 rawMessage 中推断系统事件/撤回。
+
+    背景：QQChatExporter V4 在部分导出场景中，顶层字段可能为：
+    - isSystemMessage=false
+    - isRecalled=false
+    但真实的“灰条提示/撤回”会出现在 rawMessage.elements[].grayTipElement 中，
+    或通过 rawMessage.msgType/subMsgType 表达。
+
+    返回： (is_system, is_recalled)
+    """
+
+    if not isinstance(raw_message, dict):
+        return False, False
+
+    is_system = False
+    is_recalled = False
+
+    msg_type = safe_int(raw_message.get("msgType"))
+    sub_msg_type = safe_int(raw_message.get("subMsgType"))
+
+    # 已知：msgType=5 是灰条/系统类（包含撤回、入群提示等）
+    if msg_type == 5:
+        is_system = True
+        # 常见：subMsgType=4 为撤回提示
+        if sub_msg_type == 4:
+            is_recalled = True
+
+    elements = raw_message.get("elements")
+    if isinstance(elements, list):
+        for el in elements:
+            if not isinstance(el, dict):
+                continue
+            gray = el.get("grayTipElement")
+            if not isinstance(gray, dict):
+                continue
+            # grayTip 视为系统类事件
+            is_system = True
+            # revokeElement 存在即为撤回提示
+            if isinstance(gray.get("revokeElement"), dict):
+                is_recalled = True
+
+    return is_system, is_recalled
+
+
 def _guess_conversation_meta(root: Dict[str, Any], file_path: str) -> Tuple[str, str, str]:
     chat_info = root.get("chatInfo") or {}
     if not isinstance(chat_info, dict):
@@ -245,8 +290,11 @@ def load_conversation_from_json(file_path: str) -> Tuple[Conversation, List[str]
         if not isinstance(text, str):
             text = ""
 
-        is_system = bool(m.get("isSystemMessage", False))
-        is_recalled = bool(m.get("isRecalled", False))
+        raw_message = m.get("rawMessage") if isinstance(m.get("rawMessage"), dict) else None
+        raw_is_system, raw_is_recalled = _detect_system_and_recall_from_raw_message(raw_message)
+
+        is_system = bool(m.get("isSystemMessage", False)) or raw_is_system
+        is_recalled = bool(m.get("isRecalled", False)) or raw_is_recalled
 
         message_id = m.get("messageId")
         if message_id is not None and not isinstance(message_id, str):
@@ -350,7 +398,7 @@ def load_conversation_from_json(file_path: str) -> Tuple[Conversation, List[str]
                     "isTempMessage": m.get("isTempMessage"),
                     "receiver": receiver_obj,
                     "stats": m.get("stats"),
-                    "rawMessage": m.get("rawMessage"),
+                    "rawMessage": raw_message,
                     "content": {
                         # 保留 html/raw 供后续需要时使用
                         "html": content.get("html"),
