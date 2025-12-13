@@ -702,24 +702,31 @@ function initNetworkLayoutButtons() {
         const nodes = data?.nodes?.get?.() || [];
         if (!nodes.length) return null;
 
-        // 1) id 精确匹配
-        for (const n of nodes) {
-            if (normalize(n.id) === q) return n.id;
-        }
-
-        // 2) label 精确匹配
+        // 1) label 精确匹配（昵称 / Name(QQ)）
         for (const n of nodes) {
             if (normalize(n.label) === q) return n.id;
         }
 
-        // 3) id 包含
-        for (const n of nodes) {
-            if (normalize(n.id).includes(q)) return n.id;
-        }
-
-        // 4) label 包含
+        // 2) label 包含
         for (const n of nodes) {
             if (normalize(n.label).includes(q)) return n.id;
+        }
+
+        // 3) QQ 号匹配（通过全局成员索引映射 node.id -> QQ号）
+        const idx = window.appState?.memberIndex;
+        if (idx && idx.byId) {
+            for (const n of nodes) {
+                const m = idx.byId[n.id];
+                const qq = (m?.qq ?? '').toString().trim();
+                if (!qq) continue;
+                if (normalize(qq) === q) return n.id;
+            }
+            for (const n of nodes) {
+                const m = idx.byId[n.id];
+                const qq = (m?.qq ?? '').toString().trim();
+                if (!qq) continue;
+                if (normalize(qq).includes(q)) return n.id;
+            }
         }
 
         return null;
@@ -960,8 +967,8 @@ function initNetworkLayoutButtons() {
             showStatusMessage('success', '✅ 智能排布完成');
         };
 
-        // 关键：从树状排布切到智能排布时，先把所有点重置到 (0,0)
-        // 这样可以避免 vis-network 继承上一次的层级布局结果导致“看起来没反应/错位”。
+        // 从树状排布切到散乱排布时先把所有点重置到 (0,0)
+        // 保证各个点可正常散开
         try {
             const nodes = data.nodes.get();
             if (nodes && nodes.length) {
@@ -983,7 +990,6 @@ function initNetworkLayoutButtons() {
             layout: { improvedLayout: true, hierarchical: { enabled: false } },
             physics: {
                 enabled: true,
-                // barnesHut 通常比 forceAtlas2Based 更不容易“卡住”
                 solver: 'barnesHut',
                 barnesHut: {
                     gravitationalConstant: -1800,

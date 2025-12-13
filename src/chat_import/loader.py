@@ -41,7 +41,7 @@ def load_chat_file(file_path: str, options: Optional[Dict[str, Any]] = None) -> 
 
     conversation.message_count_raw = len(conversation.messages)
 
-    # 应用过滤：是否包含系统/撤回
+    # 应用过滤是否包含系统/撤回
     filtered = apply_filters(conversation.messages, FilterOptions(include_system=include_system, include_recalled=include_recalled))
 
     # 去重
@@ -51,7 +51,7 @@ def load_chat_file(file_path: str, options: Optional[Dict[str, Any]] = None) -> 
         if tracker.is_duplicate(m):
             continue
 
-        # 回填稳定内部 id
+        # 回填内部 id
         _tier, key = dedup_key(m)
         m.id = key
         deduped.append(m)

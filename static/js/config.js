@@ -365,7 +365,7 @@ async function startSummaryGeneration() {
         if (targetType === 'personal') {
             const personalTab = document.getElementById('personal-tab');
             if (!personalTab || !personalTab.querySelector('.qq-input')?.value) {
-                throw new Error('请先在个人分析标签页输入QQ号并完成分析');
+                throw new Error('请先在个人分析标签页输入QQ号或昵称并完成分析');
             }
         }
         

@@ -12,6 +12,12 @@ let appState = {
     aiOutputTokens: parseInt(localStorage.getItem('ai_output_tokens') || '4000'),
     aiContextTokens: parseInt(localStorage.getItem('ai_context_tokens') || '60000'),
     selectedQQ: null,
+    members: [],
+    memberIndex: {
+        byId: {},
+        byQQ: {},
+        byName: {}
+    },
     analysisData: {
         personal: null,
         group: null,
@@ -28,6 +34,76 @@ let appState = {
 };
 
 const API_BASE = '/api';
+
+// ============ 成员解析工具 ============
+
+function normalizeMemberQuery(q) {
+    return (q ?? '').toString().trim().toLowerCase();
+}
+
+function buildMemberIndex(users) {
+    const index = { byId: {}, byQQ: {}, byName: {} };
+    const list = Array.isArray(users) ? users : [];
+
+    for (const u of list) {
+        const id = (u?.id ?? '').toString().trim();
+        const qq = (u?.qq ?? '').toString().trim();
+        const uid = (u?.uid ?? '').toString().trim();
+        const name = (u?.name ?? '').toString().trim();
+        if (!id && !qq && !name) continue;
+
+        const normName = normalizeMemberQuery(name);
+        if (id) index.byId[id] = { id, qq, uid, name };
+        if (qq) index.byQQ[qq] = { id, qq, uid, name };
+        if (normName) index.byName[normName] = { id, qq, uid, name };
+    }
+
+    return index;
+}
+
+function formatMemberDisplay(member, fallback) {
+    const name = (member?.name ?? '').toString().trim() || (fallback ?? '').toString().trim();
+    const qq = (member?.qq ?? '').toString().trim();
+    const uid = (member?.uid ?? '').toString().trim();
+
+    // 主展示：Name + QQ
+    let main = name || qq || uid || '未知成员';
+    if (qq && name) main = `${name} (${qq})`;
+    else if (qq && !name) main = `QQ:${qq}`;
+
+    // UID 小字：用于补充辨识（UI 可选择是否显示）
+    const small = uid ? `uid:${uid}` : '';
+    return { main, uidSmall: small };
+}
+
+function resolveMemberQuery(query) {
+    const raw = (query ?? '').toString().trim();
+    const q = normalizeMemberQuery(raw);
+    if (!q) return { id: null, member: null };
+
+    // 1) QQ 纯数字精确匹配
+    if (/^\d{5,}$/.test(raw)) {
+        const m = appState.memberIndex?.byQQ?.[raw];
+        if (m?.id) return { id: m.id, member: m };
+    }
+
+    // 2) 名称精确（忽略大小写）
+    const exactName = appState.memberIndex?.byName?.[q];
+    if (exactName?.id) return { id: exactName.id, member: exactName };
+
+    // 3) 模糊：名称包含 或 QQ 包含
+    const list = Array.isArray(appState.members) ? appState.members : [];
+    for (const u of list) {
+        const name = normalizeMemberQuery(u?.name);
+        const qq = (u?.qq ?? '').toString().trim();
+        const id = (u?.id ?? '').toString().trim();
+        if (!id) continue;
+        if (name && name.includes(q)) return { id, member: u };
+        if (qq && qq.includes(raw)) return { id, member: u };
+    }
+
+    return { id: null, member: null };
+}
 
 // ============ DOM小工具 ============
 
@@ -89,6 +165,18 @@ function bindEvents() {
     
     const networkAnalyzeBtn = document.getElementById('network-analyze-btn');
     if (networkAnalyzeBtn) networkAnalyzeBtn.addEventListener('click', analyzeNetwork);
+
+    // 对比功能
+    const compareRunBtn = document.getElementById('compare-run-btn');
+    if (compareRunBtn) {
+        compareRunBtn.addEventListener('click', () => {
+            if (typeof runCompare === 'function') {
+                runCompare();
+            } else {
+                showStatusMessage('error', '对比模块未加载');
+            }
+        });
+    }
     
     // 导出按钮
     const exportBtn = document.getElementById('export-btn');

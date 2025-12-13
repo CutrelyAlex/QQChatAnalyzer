@@ -11,7 +11,7 @@ import re
 from .LineProcess import process_lines_data, LineData
 from .CutWords import cut_words
 from .RemoveWords import remove_words
-from .utils import parse_timestamp, SYSTEM_QQ_NUMBERS, EMOJI_PATTERN
+from .utils import parse_timestamp, SYSTEM_QQ_NUMBERS, EMOJI_PATTERN, clean_message_content, has_link
 
 # 预热 jieba
 import jieba
@@ -42,6 +42,14 @@ class GroupStats:
         self.emoji_ratio = 0.0
         self.link_ratio = 0.0
         self.forward_ratio = 0.0
+
+        # 结构化元数据计数
+        self.system_messages = 0
+        self.recalled_messages = 0
+        self.mention_messages = 0
+        self.reply_messages = 0
+        self.media_messages = 0
+        self.media_breakdown = {}  # {type: count}
         
         # 热词和表情
         self.hot_words = []         # [(word, count), ...]
@@ -50,10 +58,17 @@ class GroupStats:
         # 7*24热力图
         self.heatmap = {}           # {day*24+hour: count}
         
-        # 新增：时段和日期统计分析
+        # 时段和日期统计分析
         self.hourly_top_users = {}     # {hour: {'qq': qq, 'name': name, 'count': count}} 每小时最活跃用户
         self.weekday_top_users = {}    # {weekday: {'qq': qq, 'name': name, 'count': count}} 每日最活跃用户 (0=周一)
         self.weekday_totals = {}       # {weekday: count} 全年各星期几的总消息数 (0=周一)
+
+        # 各类行为“最多的人”（包含数值）
+        self.top_recaller = None        # {'qq': qq, 'name': name, 'count': count}
+        self.top_image_sender = None
+        self.top_emoji_sender = None
+        self.top_forward_sender = None
+        self.top_file_sender = None
         
     def to_dict(self) -> Dict:
         """转换为字典格式"""
@@ -73,6 +88,14 @@ class GroupStats:
             'emoji_ratio': round(self.emoji_ratio, 2),
             'link_ratio': round(self.link_ratio, 2),
             'forward_ratio': round(self.forward_ratio, 2),
+
+            # 结构化元数据计数
+            'system_messages': int(self.system_messages),
+            'recalled_messages': int(self.recalled_messages),
+            'mention_messages': int(self.mention_messages),
+            'reply_messages': int(self.reply_messages),
+            'media_messages': int(self.media_messages),
+            'media_breakdown': self.media_breakdown or {},
             # 转换热词格式: [(word, count)] -> [{word, count}]
             'hot_words': [{'word': w, 'count': c} for w, c in self.hot_words[:20]],
             'hot_emojis': [{'emoji': e, 'count': c} for e, c in self.hot_emojis[:10]],
@@ -80,7 +103,14 @@ class GroupStats:
             # 新增时段分析
             'hourly_top_users': self.hourly_top_users,
             'weekday_top_users': self.weekday_top_users,
-            'weekday_totals': self.weekday_totals
+            'weekday_totals': self.weekday_totals,
+
+            # 新增：各类行为“最多的人”
+            'top_recaller': self.top_recaller,
+            'top_image_sender': self.top_image_sender,
+            'top_emoji_sender': self.top_emoji_sender,
+            'top_forward_sender': self.top_forward_sender,
+            'top_file_sender': self.top_file_sender,
         }
 
 
@@ -115,32 +145,60 @@ class GroupAnalyzer:
         self.qq_to_name = {}  # 重新初始化为 {qq: [nickname1, nickname2, ...]} 格式
         
         for msg in messages:
-            qq = msg.get('qq', '')
-            
-            # 过滤系统QQ号
-            if qq in SYSTEM_QQ_NUMBERS:
-                continue
-            
+            qq = str(msg.get('qq', '') or '')
+            content = str(msg.get('content', '') or '')
+
+            is_system = bool(msg.get('is_system')) or (qq in SYSTEM_QQ_NUMBERS) or (qq == 'system')
+            is_recall = bool(msg.get('is_recalled')) or ('撤回了一条消息' in content)
+
+            resource_types = msg.get('resource_types')
+            if not isinstance(resource_types, list):
+                resource_types = []
+            resource_types = [str(t) for t in resource_types if t]
+
+            # 优先使用结构化资源类型；缺失时回退旧标记
+            image_count = resource_types.count('image') if resource_types else content.count('[图片]')
+            emoji_count = 0
+            if resource_types:
+                for t in resource_types:
+                    if t in ('emoji', 'sticker'):
+                        emoji_count += 1
+            else:
+                emoji_count = content.count('[表情]')
+
+            # mentions：若导入层提供 mentions 列表则直接使用
+            mentions = msg.get('mentions')
+            if not isinstance(mentions, list):
+                mentions = []
+            mentions = [str(x) for x in mentions if x]
+
+            clean_text = clean_message_content(content)
+
             line_data = LineData(
-                raw_text=msg.get('content', ''),
-                clean_text=msg.get('content', '').replace('[图片]', '').replace('[表情]', '').replace('撤回了一条消息', ''),
-                char_count=len(msg.get('content', '')),
-                timepat=msg.get('time', ''),
+                raw_text=content,
+                clean_text=clean_text,
+                char_count=len(clean_text),
+                timepat=str(msg.get('time', '') or ''),
                 qq=qq,
-                sender=msg.get('sender', ''),
-                image_count=msg.get('content', '').count('[图片]'),
-                emoji_count=msg.get('content', '').count('[表情]'),
-                mentions=[],  # 从 content 中提取
-                has_link='http://' in msg.get('content', '') or 'https://' in msg.get('content', ''),
-                is_recall='撤回了一条消息' in msg.get('content', '')
+                sender=str(msg.get('sender', '') or ''),
+                image_count=image_count,
+                emoji_count=emoji_count,
+                mentions=mentions,
+                has_link=has_link(content) or ('link' in resource_types),
+                is_recall=is_recall,
             )
+
+            # 附加结构化信息（LineData 是轻量容器；动态扩展字段即可）
+            line_data.is_system = is_system
+            line_data.message_type = str(msg.get('message_type') or line_data.get_message_type() or 'unknown')
+            line_data.resource_types = resource_types
+
             self.lines_data.append(line_data)
-            
-            # 构建映射：收集同一QQ的所有昵称
-            if qq and line_data.sender:
+
+            # 昵称映射：仅记录“非系统消息”的 sender
+            if (not is_system) and qq and line_data.sender:
                 if qq not in self.qq_to_name:
                     self.qq_to_name[qq] = []
-                # 去重添加昵称
                 if line_data.sender not in self.qq_to_name[qq]:
                     self.qq_to_name[qq].append(line_data.sender)
     
@@ -191,6 +249,14 @@ class GroupAnalyzer:
         emoji_count = 0
         link_count = 0
         forward_count = 0
+
+        # 结构化指标
+        system_count = 0
+        recalled_count = 0
+        mention_msg_count = 0
+        reply_msg_count = 0
+        media_msg_count = 0
+        media_breakdown = defaultdict(int)
         
         # 热力图
         heatmap = defaultdict(int)
@@ -202,11 +268,51 @@ class GroupAnalyzer:
         
         # 表情统计
         emoji_counter = defaultdict(int)
+
+        # 各类行为的“按成员计数”
+        recalled_by_user = defaultdict(int)
+        image_by_user = defaultdict(int)
+        emoji_by_user = defaultdict(int)
+        forward_by_user = defaultdict(int)
+        file_by_user = defaultdict(int)
         
         # === 单次遍历 ===
         for i, line_data in enumerate(self.lines_data):
             dt = parsed_times[i]
             qq = line_data.qq
+
+            is_system = bool(getattr(line_data, 'is_system', False))
+            msg_type = str(getattr(line_data, 'message_type', '') or line_data.get_message_type() or 'unknown')
+            rtypes = getattr(line_data, 'resource_types', None)
+            if not isinstance(rtypes, list):
+                rtypes = []
+            rtypes = [str(t) for t in rtypes if t]
+
+            if is_system:
+                system_count += 1
+            if line_data.is_recall:
+                recalled_count += 1
+                if qq and (not is_system):
+                    recalled_by_user[qq] += 1
+            if (not is_system) and line_data.mentions:
+                mention_msg_count += 1
+            if msg_type == 'reply':
+                reply_msg_count += 1
+
+            # 媒体统计：优先用 resource_types；缺失则用旧启发式
+            media_types = set(rtypes)
+            if not media_types:
+                if line_data.image_count > 0:
+                    media_types.add('image')
+                if line_data.emoji_count > 0:
+                    media_types.add('emoji')
+                if line_data.has_link:
+                    media_types.add('link')
+
+            if media_types:
+                media_msg_count += 1
+                for t in media_types:
+                    media_breakdown[t] += 1
             
             # 1. 活跃度指标
             date = line_data.get_date()
@@ -229,21 +335,33 @@ class GroupAnalyzer:
                     weekday_user_count[day][qq] += 1
                     weekday_totals[day] += 1
             
-            # 2. 成员统计
-            if qq:
+            # 2. 成员统计：系统消息不参与成员活跃度分层
+            if qq and (not is_system) and (qq not in SYSTEM_QQ_NUMBERS) and qq != 'system':
                 member_count[qq] += 1
             
             # 3. 消息类型分析
-            if line_data.image_count > 0:
-                image_count += 1
-            elif line_data.emoji_count > 0:
-                emoji_count += 1
-            elif line_data.has_link:
-                link_count += 1
-            elif line_data.is_recall:
-                forward_count += 1
-            elif line_data.clean_text.strip():
-                text_count += 1
+            if is_system or line_data.is_recall:
+                pass
+            else:
+                # 优先使用结构化类型与资源类型
+                if 'image' in rtypes or line_data.image_count > 0 or msg_type == 'image':
+                    image_count += 1
+                    if qq:
+                        image_by_user[qq] += 1
+                elif any(t in ('emoji', 'sticker') for t in rtypes) or line_data.emoji_count > 0 or msg_type in ('emoji', 'sticker'):
+                    emoji_count += 1
+                    if qq:
+                        emoji_by_user[qq] += 1
+                elif ('link' in rtypes) or line_data.has_link or msg_type == 'link':
+                    link_count += 1
+                elif msg_type in ('forward', 'video', 'audio', 'file', 'redpacket', 'special') or ('forward' in rtypes):
+                    forward_count += 1
+                    if qq and (msg_type == 'forward' or ('forward' in rtypes)):
+                        forward_by_user[qq] += 1
+                    if qq and (msg_type == 'file' or ('file' in rtypes)):
+                        file_by_user[qq] += 1
+                elif line_data.clean_text.strip() or msg_type == 'text':
+                    text_count += 1
             
             # 4. 表情统计
             content = line_data.raw_text
@@ -256,6 +374,14 @@ class GroupAnalyzer:
         
         # 总消息数
         self.stats.total_messages = len(self.lines_data)
+
+        # 结构化计数
+        self.stats.system_messages = system_count
+        self.stats.recalled_messages = recalled_count
+        self.stats.mention_messages = mention_msg_count
+        self.stats.reply_messages = reply_msg_count
+        self.stats.media_messages = media_msg_count
+        self.stats.media_breakdown = dict(sorted(media_breakdown.items(), key=lambda x: x[0]))
         
         # 日均消息
         active_days = len(unique_dates)
@@ -295,6 +421,24 @@ class GroupAnalyzer:
         
         # 时段分析
         self._calculate_time_based_stats(hourly_user_count, weekday_user_count, weekday_totals)
+
+        # 各类行为最多的人
+        def build_top_item(counter: Dict[str, int]):
+            if not counter:
+                return None
+            top_qq, top_cnt = max(counter.items(), key=lambda x: x[1])
+            names = self.qq_to_name.get(top_qq, [top_qq])
+            if isinstance(names, list):
+                name = names[-1] if names else top_qq
+            else:
+                name = names if names else top_qq
+            return {'qq': top_qq, 'name': name, 'count': int(top_cnt)}
+
+        self.stats.top_recaller = build_top_item(recalled_by_user)
+        self.stats.top_image_sender = build_top_item(image_by_user)
+        self.stats.top_emoji_sender = build_top_item(emoji_by_user)
+        self.stats.top_forward_sender = build_top_item(forward_by_user)
+        self.stats.top_file_sender = build_top_item(file_by_user)
     
     def _calculate_member_stratification(self, member_count: Dict[str, int]) -> None:
         """计算成员分层（从单次遍历的结果中）"""
@@ -387,6 +531,12 @@ class GroupAnalyzer:
         emoji_count = defaultdict(int)
         
         for line_data in self.lines_data:
+            # 热词默认排除 系统/撤回
+            if bool(getattr(line_data, 'is_system', False)):
+                continue
+            if line_data.is_recall:
+                continue
+
             if '[图片]' not in line_data.raw_text and line_data.clean_text.strip():
                 all_text_lines.append(line_data.clean_text)
             

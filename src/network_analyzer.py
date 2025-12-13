@@ -104,6 +104,7 @@ class NetworkAnalyzer:
         Args:
             messages: 消息列表，每条消息包含: qq, time, content, sender等字段
         """
+        # 保持兼容：按 time 字符串排序
         self.messages = sorted(messages, key=lambda x: x.get('time', ''))
 
         # 可选：限制计算范围（Top-N 活跃用户）
@@ -124,6 +125,8 @@ class NetworkAnalyzer:
         for msg in self.messages:
             qq = msg.get('qq', '')
             sender = msg.get('sender', '')
+            if msg.get('is_system'):
+                continue
             if qq and sender and qq not in self.qq_to_name:
                 self.qq_to_name[qq] = sender
     
@@ -191,6 +194,9 @@ class NetworkAnalyzer:
 
         # 按时间排序的消息（已排序）
         for i, msg1 in enumerate(self.messages):
+            # 系统/撤回事件不参与互动边
+            if msg1.get('is_system') or msg1.get('is_recalled'):
+                continue
             qq1 = msg1.get('qq', '')
             time1 = self._parse_time(msg1.get('time', ''))
 
@@ -202,6 +208,8 @@ class NetworkAnalyzer:
             
             for j in range(i + 1, min(i + 1 + max_lookahead, len(self.messages))):
                 msg2 = self.messages[j]
+                if msg2.get('is_system') or msg2.get('is_recalled'):
+                    continue
                 qq2 = msg2.get('qq', '')
                 time2 = self._parse_time(msg2.get('time', ''))
 
@@ -248,14 +256,32 @@ class NetworkAnalyzer:
         elif time_diff <= self.conversation_window:
             score += 0.1  # 在窗口内但时间较长
 
-        # 2. @提及加分
+        # 2. @提及加分（优先使用结构化 mentions；缺失回退字符串启发式）
         content1 = msg1.get('content', '')
         content2 = msg2.get('content', '')
         qq1 = msg1.get('qq', '')
         qq2 = msg2.get('qq', '')
 
-        if f'@{qq2}' in content1 or f'@{qq1}' in content2:
-            score += 0.4  # 直接@提及
+        m1_mentions = msg1.get('mentions')
+        m2_mentions = msg2.get('mentions')
+        if not isinstance(m1_mentions, list):
+            m1_mentions = []
+        if not isinstance(m2_mentions, list):
+            m2_mentions = []
+
+        # mentions 列表里可能是 participantId 或 name，这里只对“精确 id”做加分
+        if qq2 and (qq2 in m1_mentions):
+            score += 0.55
+        elif qq1 and (qq1 in m2_mentions):
+            score += 0.55
+        elif (qq2 and f'@{qq2}' in content1) or (qq1 and f'@{qq1}' in content2):
+            score += 0.35  # 旧格式兜底
+
+        # 2.5 reply 加分（若能解析到回复对象）
+        if msg2.get('reply_to_qq') and msg2.get('reply_to_qq') == qq1:
+            score += 0.6
+        elif msg1.get('reply_to_qq') and msg1.get('reply_to_qq') == qq2:
+            score += 0.6
 
         # 3. 内容相关性（简单检查）
         if self._messages_related(content1, content2):
@@ -299,8 +325,14 @@ class NetworkAnalyzer:
         user_contents = defaultdict(list)
 
         for msg in self.messages:
+            if msg.get('is_system') or msg.get('is_recalled'):
+                continue
             qq = msg.get('qq', '')
             content = msg.get('content', '').strip()
+            # 非文本消息不参与“内容相似性”
+            mt = str(msg.get('message_type') or 'text')
+            if mt not in ('text', 'reply') and not content:
+                continue
             if qq and content and len(content) > 2:  # 过滤太短的消息
                 user_contents[qq].append(content)
 

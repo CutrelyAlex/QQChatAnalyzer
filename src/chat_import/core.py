@@ -42,8 +42,6 @@ def participant_id_from_uid_uin(uid: Any = None, uin: Any = None, fallback_name:
     - uid（若存在）
     - uin（若存在）
     - fallback_name（仅用于缺失 uid/uin 的极端情况）
-
-    使用前缀避免命名空间冲突。
     """
 
     uid_s = _norm_str(uid)

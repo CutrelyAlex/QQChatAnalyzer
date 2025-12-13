@@ -44,6 +44,32 @@ HTTP_PATTERN = re.compile(r'(http|https)://')
 # 表情检测
 EMOJI_PATTERN = re.compile(r'\[([^\]]+)\]')
 
+# 资源/系统占位符（用于清理热词、示例文本等）
+_BRACKET_ARTIFACT_PATTERN = re.compile(
+    r"\[(图片|表情|合并转发|聊天记录|语音|视频|文件|动画表情|动图|位置|红包|转账|卡片|名片|分享|链接|应用消息)\s*[:：]?[^\]]*\]"
+)
+_XML_DECL_PATTERN = re.compile(r"<\?xml[^>]*\?>", re.IGNORECASE)
+_XML_MSG_PATTERN = re.compile(r"<msg\b[^>]*>.*?</msg>", re.IGNORECASE | re.DOTALL)
+_XML_TAG_PATTERN = re.compile(r"<[^>]+>", re.IGNORECASE)
+_XML_ATTR_LIKE_PATTERN = re.compile(r"\b\w+\s*=\s*\"[^\"\n]{1,2000}\"")
+_XML_ATTR_LIKE_SQ_PATTERN = re.compile(r"\b\w+\s*=\s*'[^'\n]{1,2000}'")
+_LONG_HEX_PATTERN = re.compile(r"\b[0-9a-fA-F]{16,}\b")
+_HASHED_FILENAME_PATTERN = re.compile(
+    r"\b[0-9a-fA-F]{16,}\.(jpg|jpeg|png|gif|webp|bmp|mp4|mov|mkv|mp3|amr|wav)\b",
+    re.IGNORECASE,
+)
+
+# URL 片段
+_URL_PATTERN = re.compile(r"https?://\S+", re.IGNORECASE)
+_WWW_PATTERN = re.compile(r"\bwww\.[^\s]+", re.IGNORECASE)
+
+# 移除所有 [] 包裹的内容
+_ANY_BRACKET_PATTERN = re.compile(r"\[[^\]]*\]")
+
+# QQChatExporter / 内部标识（避免 uid token 污染热词与示例）
+_EXPORTER_UID_PATTERN = re.compile(r"\bu_[A-Za-z0-9_\-]{6,}\b")
+_INTERNAL_PARTICIPANT_ID_PATTERN = re.compile(r"\b(?:uid|uin|name)\s*:\s*[^\s]{1,120}\b", re.IGNORECASE)
+
 
 # ==================== 时间解析工具 ====================
 
@@ -62,9 +88,17 @@ def parse_timestamp(time_str: str) -> Optional[datetime]:
     if not time_str:
         return None
     
-    # 1. 尝试标准ISO格式
+    ts = str(time_str).strip()
+    if not ts:
+        return None
+
+    # 兼容 ISO-8601 的 UTC 结尾 "Z"（datetime.fromisoformat 不接受 'Z'）
+    if ts.endswith('Z'):
+        ts = ts[:-1] + '+00:00'
+
+    # 1. 尝试标准ISO格式（支持 "YYYY-MM-DD HH:MM:SS" / "YYYY-MM-DDTHH:MM:SS" / 带毫秒 / 带时区）
     try:
-        return datetime.fromisoformat(time_str)
+        return datetime.fromisoformat(ts)
     except ValueError:
         pass
     
@@ -76,7 +110,7 @@ def parse_timestamp(time_str: str) -> Optional[datetime]:
     
     # 3. 手动解析：补齐单数字小时
     try:
-        parts = time_str.split(' ')
+        parts = ts.split(' ')
         if len(parts) == 2:
             date_part, time_part = parts
             time_components = time_part.split(':')
@@ -169,11 +203,46 @@ def clean_message_content(content: str) -> str:
     """
     if not content:
         return ""
-    return (content
+
+    text = str(content)
+
+    # 常见固定占位
+    text = (text
             .replace('[图片]', '')
             .replace('[表情]', '')
-            .replace('撤回了一条消息', '')
-            .replace('\n', ''))
+            .replace('撤回了一条消息', ''))
+
+    # 资源类括号占位（支持“[图片: xxx.jpg]”“[合并转发: <xml...>]”等）
+    text = _BRACKET_ARTIFACT_PATTERN.sub(' ', text)
+
+    # 更激进：移除所有 [] 片段（如：[回复 u_xxx: 原消息]）
+    text = _ANY_BRACKET_PATTERN.sub(' ', text)
+
+    # 移除 URL
+    text = _URL_PATTERN.sub(' ', text)
+    text = _WWW_PATTERN.sub(' ', text)
+
+    # 移除 exporter 生成的 uid / participant_id 等内部标识
+    text = _EXPORTER_UID_PATTERN.sub(' ', text)
+    text = _INTERNAL_PARTICIPANT_ID_PATTERN.sub(' ', text)
+
+    # 合并转发里常见的 XML 内容（直接整段剔除，避免 hash / resid 等污染热词）
+    text = _XML_MSG_PATTERN.sub(' ', text)
+    text = _XML_DECL_PATTERN.sub(' ', text)
+
+    # 兜底：剔除残留的 XML/HTML 标签与“key=\"value\"”属性碎片
+    text = _XML_TAG_PATTERN.sub(' ', text)
+    text = _XML_ATTR_LIKE_PATTERN.sub(' ', text)
+    text = _XML_ATTR_LIKE_SQ_PATTERN.sub(' ', text)
+
+    # 移除长 hash / hashed 文件名（图片等）
+    text = _HASHED_FILENAME_PATTERN.sub(' ', text)
+    text = _LONG_HEX_PATTERN.sub(' ', text)
+
+    # 统一空白
+    text = text.replace('\n', ' ')
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
 
 
 def extract_mentions(content: str) -> list:

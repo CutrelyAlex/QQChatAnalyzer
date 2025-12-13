@@ -22,11 +22,15 @@ from src.config import Config
 from src.personal_analyzer import PersonalAnalyzer
 from src.group_analyzer import GroupAnalyzer
 from src.network_analyzer import NetworkAnalyzer
+from src.chat_import import load_chat_file
+from src.compare import build_snapshot, diff_snapshots
 
 # 热词示例缓存
 _CHAT_EXAMPLES_CACHE = {
     # filename: {"mtime": float, "records": [ {timestamp,sender,qq,clean_text}, ... ]}
 }
+
+_CHAT_EXAMPLES_CLEANER_VERSION = 4
 
 # 配置日志
 logging.basicConfig(
@@ -53,6 +57,158 @@ app.config.from_object(Config)
 # 创建必要的目录
 Path('uploads').mkdir(exist_ok=True)
 Path('exports').mkdir(exist_ok=True)
+
+# texts 目录与允许的输入文件类型
+_TEXTS_DIR = Path('texts')
+_ALLOWED_SUFFIXES = {'.txt', '.json'}
+
+
+def _safe_texts_file_path(filename: str) -> Path:
+    """
+    把用户输入的文件名映射到 texts/ 下
+    仅允许 .txt/.json
+    """
+    if not filename or not isinstance(filename, str):
+        raise ValueError('未指定文件名')
+
+    texts_dir = _TEXTS_DIR.resolve()
+    candidate = (_TEXTS_DIR / filename).resolve()
+
+    if texts_dir not in candidate.parents and candidate != texts_dir:
+        raise ValueError('非法文件路径')
+
+    if candidate.suffix.lower() not in _ALLOWED_SUFFIXES:
+        raise ValueError('不支持的文件类型')
+
+    return candidate
+
+
+def _format_time_from_ts_ms(ts_ms: int) -> str:
+    """把 epoch ms 转为时间字符串。"""
+    try:
+        if not ts_ms:
+            return ''
+        return datetime.fromtimestamp(ts_ms / 1000).strftime('%Y-%m-%d %H:%M:%S')
+    except Exception:
+        return ''
+
+
+def _parse_bool_query(value: str | None, *, default: bool = False) -> bool:
+    if value is None:
+        return default
+    s = str(value).strip().lower()
+    if s in ('1', 'true', 'yes', 'on'):
+        return True
+    if s in ('0', 'false', 'no', 'off'):
+        return False
+    return default
+
+
+def _legacy_placeholders_for_message(message_type: str, resource_types: list[str] | None, *, is_recalled: bool) -> str:
+    """为旧分析器生成可读占位符。
+    """
+
+    if is_recalled:
+        return '撤回了一条消息'
+
+    rt = [str(x) for x in (resource_types or []) if x]
+    tokens: list[str] = []
+
+    # 旧的
+    if 'image' in rt:
+        tokens.append('[图片]')
+    if 'emoji' in rt or 'sticker' in rt:
+        tokens.append('[表情]')
+
+    # 新类型占位
+    for t in rt:
+        if t in ('image', 'emoji', 'sticker'):
+            continue
+        tokens.append(f'[{t}]')
+
+    if not tokens and message_type and message_type not in ('text', 'unknown'):
+        tokens.append(f'[{message_type}]')
+
+    return ' '.join(tokens).strip()
+
+
+def _load_conversation_and_messages(filename: str, *, options=None):
+    """从 texts/ 加载归一化会话，并返回适配现有分析/AI 的消息字典列表。"""
+    options = options or {}
+    filepath = _safe_texts_file_path(filename)
+    if not filepath.exists():
+        raise FileNotFoundError('文件不存在')
+
+    result = load_chat_file(str(filepath), options=options)
+    conv = result.conversation
+
+    # participantId -> displayName
+    pid_to_name = {p.participant_id: p.display_name for p in (conv.participants or [])}
+
+    # message_id -> sender_participant_id，用于把 reply 引用解析到“回复了谁”
+    message_id_to_sender: dict[str, str] = {}
+    for m in conv.messages:
+        if m.message_id and m.sender_participant_id:
+            message_id_to_sender[str(m.message_id)] = str(m.sender_participant_id)
+
+    messages = []
+    for m in conv.messages:
+        time_str = _format_time_from_ts_ms(m.timestamp_ms)
+
+        # 系统类事件可能没有 sender，这里用兜底身份承载
+        qq = m.sender_participant_id or 'system'
+        sender = m.sender_name or pid_to_name.get(qq, qq) or ('系统' if qq == 'system' else qq)
+
+        resource_types = [getattr(r, 'type', None) for r in (m.resources or [])]
+        resource_types = [str(t) for t in resource_types if t]
+
+        mention_targets = []
+        for it in (m.mentions or []):
+            try:
+                pid = getattr(it, 'target_participant_id', None)
+                name = getattr(it, 'target_name', None)
+                mention_targets.append(pid or name)
+            except Exception:
+                continue
+        mention_targets = [str(x) for x in mention_targets if x]
+
+        reply_to_mid = None
+        if m.reply_to is not None:
+            reply_to_mid = getattr(m.reply_to, 'target_message_id', None)
+            if reply_to_mid is not None:
+                reply_to_mid = str(reply_to_mid)
+
+        reply_to_qq = message_id_to_sender.get(reply_to_mid) if reply_to_mid else None
+
+        content = m.text or ''
+        if not content:
+            content = _legacy_placeholders_for_message(
+                m.message_type,
+                resource_types,
+                is_recalled=bool(m.is_recalled),
+            )
+
+        messages.append({
+            # legacy fields（现有分析器/AI/预览依赖）
+            'time': time_str,
+            'sender': sender,
+            'qq': str(qq),
+            'content': content,
+
+            # structured meta
+            'timestamp_ms': int(m.timestamp_ms or 0),
+            'message_id': str(m.message_id) if m.message_id is not None else None,
+            'is_system': bool(m.is_system),
+            'is_recalled': bool(m.is_recalled),
+            'message_type': str(m.message_type or 'unknown'),
+            'resource_types': resource_types,
+            'mention_count': int(len(mention_targets)),
+            'mentions': mention_targets,
+            'reply_to_message_id': reply_to_mid,
+            'reply_to_qq': reply_to_qq,
+        })
+
+    return conv, messages, result.warnings
 
 
 # ============ 错误处理 ============
@@ -87,19 +243,27 @@ def index():
 def get_files():
     """获取可分析的文件列表（从texts/目录）"""
     try:
-        # 获取texts目录下的所有 .txt 文件
-        texts_dir = Path('texts')
-        texts_dir.mkdir(exist_ok=True)
-        txt_files = list(texts_dir.glob('*.txt'))
-        
-        files = [
-            {
-                'name': f.name,
-                'size': f.stat().st_size,
-                'modified': datetime.fromtimestamp(f.stat().st_mtime).isoformat()
-            }
-            for f in txt_files
-        ]
+        # 获取 texts 目录下的所有可支持文件（.txt / .json）
+        _TEXTS_DIR.mkdir(exist_ok=True)
+        candidates = []
+        for ext in _ALLOWED_SUFFIXES:
+            candidates.extend(_TEXTS_DIR.glob(f'*{ext}'))
+
+        files = []
+        for f in candidates:
+            try:
+                st = f.stat()
+                files.append({
+                    'name': f.name,
+                    'size': st.st_size,
+                    'modified': datetime.fromtimestamp(st.st_mtime).isoformat(),
+                    'ext': f.suffix.lower(),
+                })
+            except Exception:
+                continue
+
+        # 最近修改优先
+        files.sort(key=lambda x: x.get('modified', ''), reverse=True)
         
         return jsonify({
             'success': True,
@@ -121,11 +285,14 @@ def load_file():
         if not filename:
             return jsonify({'success': False, 'error': '未指定文件名'}), 400
         
-        filepath = Path('texts') / filename
-        
-        # 安全检查：只允许加载texts目录下的 .txt 文件
-        if not filepath.exists() or filepath.suffix != '.txt':
-            return jsonify({'success': False, 'error': '文件不存在或不是文本文件'}), 400
+        try:
+            filepath = _safe_texts_file_path(filename)
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 400
+
+        # 只允许加载 texts 目录下的支持类型文件
+        if not filepath.exists():
+            return jsonify({'success': False, 'error': '文件不存在'}), 404
         
         # 检查文件大小
         file_size_mb = filepath.stat().st_size / (1024 * 1024)
@@ -141,6 +308,7 @@ def load_file():
             'success': True,
             'message': f'文件 {filename} 已加载',
             'filename': filename,
+            'ext': filepath.suffix.lower(),
             'size_mb': round(file_size_mb, 2)
         })
     except Exception as e:
@@ -154,25 +322,22 @@ def load_file():
 def get_personal_list(filename):
     """获取文件中所有用户列表"""
     try:
-        filepath = Path('texts') / filename
-        if not filepath.exists():
-            return jsonify({'success': False, 'error': '文件不存在'}), 404
-        
-        # 解析文件获取所有QQ
-        import re
-        qqs_dict = {}
-        time_pattern = r'^(\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}:\d{2}) (.+)\((\d+)\)'
-        
-        with open(filepath, 'r', encoding='utf-8') as f:
-            for line in f:
-                m = re.match(time_pattern, line.strip())
-                if m:
-                    sender = m.group(2)
-                    qq = m.group(3)
-                    if qq not in qqs_dict:
-                        qqs_dict[qq] = sender
-        
-        users = [{'qq': qq, 'name': name} for qq, name in sorted(qqs_dict.items())]
+        conv, _messages, _warnings = _load_conversation_and_messages(filename)
+
+        users = []
+        for p in (conv.participants or []):
+            # 说明：
+            # - id: internal participant_id（分析与接口调用使用；可能是 uid:... 或 uin:...）
+            # - qq: QQ号（uin，纯数字字符串；可能为空）
+            # - uid: exporter uid（可能为空）
+            users.append({
+                'id': p.participant_id,
+                'qq': p.uin or '',
+                'uid': p.uid or '',
+                'name': p.display_name or (p.uin or p.uid or p.participant_id),
+            })
+
+        users.sort(key=lambda x: (x.get('name') or '', x.get('qq') or '', x.get('id') or ''))
         
         return jsonify({
             'success': True,
@@ -191,16 +356,14 @@ def get_personal_analysis(qq):
         filename = request.args.get('file')
         if not filename:
             return jsonify({'success': False, 'error': '未指定文件'}), 400
-        
-        filepath = Path('texts') / filename
-        if not filepath.exists():
-            return jsonify({'success': False, 'error': '文件不存在'}), 404
-        
+
         logger.info(f"Analyzing personal stats for {qq} from {filename}")
-        
-        # 执行分析
+
+        conv, messages, _warnings = _load_conversation_and_messages(filename)
+
+        # 执行分析（走消息列表入口，避免 .txt/.json 两套解析）
         analyzer = PersonalAnalyzer()
-        stats = analyzer.get_user_stats(str(filepath), qq)
+        stats = analyzer.get_user_stats_from_messages(messages, qq)
         
         if not stats:
             return jsonify({
@@ -224,47 +387,19 @@ def get_group_analysis():
         filename = request.args.get('file')
         if not filename:
             return jsonify({'success': False, 'error': '未指定文件'}), 400
-        
-        filepath = Path('texts') / filename
-        if not filepath.exists():
-            return jsonify({'success': False, 'error': '文件不存在'}), 404
-        
         logger.info(f"Analyzing group stats from {filename}")
-        
-        # 解析文件获取所有消息
-        import re
-        messages = []
-        time_pattern = r'^(\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}:\d{2}) (.+)\((\d+)\)'
-        
-        with open(filepath, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-        
-        i = 0
-        while i < len(lines):
-            line = lines[i].strip()
-            m = re.match(time_pattern, line)
-            if m:
-                timestamp = m.group(1)
-                sender = m.group(2)
-                qq = m.group(3)
-                content = ""
-                
-                # 获取消息内容（可能是多行）
-                if i + 1 < len(lines):
-                    next_line = lines[i + 1].strip()
-                    if not re.match(time_pattern, next_line):
-                        content = next_line
-                        i += 1
-                
-                messages.append({
-                    'time': timestamp,
-                    'sender': sender,
-                    'qq': qq,
-                    'content': content
-                })
-            i += 1
-        
-        # 执行分析
+
+        include_system = _parse_bool_query(request.args.get('include_system'), default=True)
+        include_recalled = _parse_bool_query(request.args.get('include_recalled'), default=True)
+
+        _conv, messages, _warnings = _load_conversation_and_messages(
+            filename,
+            options={
+                'include_system': include_system,
+                'include_recalled': include_recalled,
+            },
+        )
+
         analyzer = GroupAnalyzer()
         analyzer.load_messages(messages)
         stats = analyzer.analyze()
@@ -288,46 +423,19 @@ def get_network_analysis():
         limit_compute = request.args.get('limit_compute', '').strip() in ('1', 'true', 'True', 'yes', 'on')
         if not filename:
             return jsonify({'success': False, 'error': '未指定文件'}), 400
-        
-        filepath = Path('texts') / filename
-        if not filepath.exists():
-            return jsonify({'success': False, 'error': '文件不存在'}), 404
-        
         logger.info(f"Analyzing network from {filename}")
-        
-        # 解析文件获取所有消息
-        import re
-        messages = []
-        time_pattern = r'^(\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}:\d{2}) (.+)\((\d+)\)'
-        
-        with open(filepath, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-        
-        i = 0
-        while i < len(lines):
-            line = lines[i].strip()
-            m = re.match(time_pattern, line)
-            if m:
-                timestamp = m.group(1)
-                sender = m.group(2)
-                qq = m.group(3)
-                content = ""
-                
-                # 获取消息内容（可能是多行）
-                if i + 1 < len(lines):
-                    next_line = lines[i + 1].strip()
-                    if not re.match(time_pattern, next_line):
-                        content = next_line
-                        i += 1
-                
-                messages.append({
-                    'time': timestamp,
-                    'sender': sender,
-                    'qq': qq,
-                    'content': content
-                })
-            i += 1
-        
+
+        include_system = _parse_bool_query(request.args.get('include_system'), default=True)
+        include_recalled = _parse_bool_query(request.args.get('include_recalled'), default=True)
+
+        _conv, messages, _warnings = _load_conversation_and_messages(
+            filename,
+            options={
+                'include_system': include_system,
+                'include_recalled': include_recalled,
+            },
+        )
+
         # 执行网络分析（允许用前端 slider 覆盖默认上限）
         analyzer = NetworkAnalyzer(
             max_nodes_for_viz=max_nodes,
@@ -343,6 +451,73 @@ def get_network_analysis():
         })
     except Exception as e:
         logger.error(f"Error in network analysis: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ============ 对比分析API ============
+
+
+@app.route('/api/compare', methods=['GET'])
+def compare_files():
+    """对比两段聊天（文件级别）。
+
+    Query:
+      - left/right: 两个 texts/ 下的文件名（.txt 或 .json）
+      - include_network: 是否计算网络摘要（默认 true）
+      - max_nodes/max_edges/limit_compute: 传递给 NetworkAnalyzer 的参数
+    """
+    try:
+        left_name = request.args.get('left')
+        right_name = request.args.get('right')
+        if not left_name or not right_name:
+            return jsonify({'success': False, 'error': '缺少 left/right 参数'}), 400
+
+        include_network = _parse_bool_query(request.args.get('include_network'), default=True)
+
+        max_nodes = request.args.get('max_nodes', type=int)
+        max_edges = request.args.get('max_edges', type=int)
+        limit_compute = _parse_bool_query(request.args.get('limit_compute'), default=True)
+
+        # 使用相同的导入过滤规则（默认包含系统/撤回；热词在 analyzer 内默认排除）
+        include_system = _parse_bool_query(request.args.get('include_system'), default=True)
+        include_recalled = _parse_bool_query(request.args.get('include_recalled'), default=True)
+        options = {'include_system': include_system, 'include_recalled': include_recalled}
+
+        conv_l, msgs_l, warn_l = _load_conversation_and_messages(left_name, options=options)
+        conv_r, msgs_r, warn_r = _load_conversation_and_messages(right_name, options=options)
+
+        # Group
+        g1 = GroupAnalyzer(); g1.load_messages(msgs_l); gs1 = g1.analyze().to_dict()
+        g2 = GroupAnalyzer(); g2.load_messages(msgs_r); gs2 = g2.analyze().to_dict()
+
+        ns1 = None
+        ns2 = None
+        if include_network:
+            n1 = NetworkAnalyzer(max_nodes_for_viz=max_nodes, max_edges_for_viz=max_edges, limit_compute=limit_compute)
+            n1.load_messages(msgs_l)
+            ns1 = n1.analyze().to_dict()
+
+            n2 = NetworkAnalyzer(max_nodes_for_viz=max_nodes, max_edges_for_viz=max_edges, limit_compute=limit_compute)
+            n2.load_messages(msgs_r)
+            ns2 = n2.analyze().to_dict()
+
+        snap_l = build_snapshot(filename=left_name, conversation=conv_l, group_stats=gs1, network_stats=ns1)
+        snap_r = build_snapshot(filename=right_name, conversation=conv_r, group_stats=gs2, network_stats=ns2)
+        diff = diff_snapshots(snap_l, snap_r)
+
+        return jsonify({
+            'success': True,
+            'left': snap_l.to_dict(),
+            'right': snap_r.to_dict(),
+            'diff': diff,
+            'warnings': {
+                'left': warn_l,
+                'right': warn_r,
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Error in compare: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -429,18 +604,15 @@ def token_estimate():
         if not filename:
             return jsonify({'success': False, 'error': '未指定文件'}), 400
         
-        filepath = Path('texts') / filename
-        if not filepath.exists():
+        try:
+            _conv, messages, _warnings = _load_conversation_and_messages(filename)
+        except FileNotFoundError:
             return jsonify({'success': False, 'error': '文件不存在'}), 404
-        
-        # 使用 DataPruner 进行 Token 估算
+
         from src.data_pruner import DataPruner
-        from src.LineProcess import process_lines_data
-        
-        lines, lines_data, _ = process_lines_data(str(filepath), mode='all')
-        
+
         pruner = DataPruner(max_tokens)
-        pruner.load_from_lines(lines, lines_data)
+        pruner.load_messages(messages)
         
         # 获取 Token 估算结果
         estimate = pruner.estimate_tokens()
@@ -645,9 +817,16 @@ def generate_summary():
         
         if not filename:
             return jsonify({'success': False, 'error': '未指定文件'}), 400
-        
-        filepath = Path('texts') / filename
-        if not filepath.exists() and not analysis_data:
+
+        filepath = None
+        try:
+            filepath = _safe_texts_file_path(filename)
+        except Exception as e:
+            # 若来自缓存且文件名非法，仍然无法加载消息样本
+            if not analysis_data:
+                return jsonify({'success': False, 'error': str(e)}), 400
+
+        if filepath is not None and (not filepath.exists()) and not analysis_data:
             return jsonify({'success': False, 'error': '文件不存在'}), 404
         
         if not Config.OPENAI_API_KEY:
@@ -677,31 +856,12 @@ def generate_summary():
                 'error': 'AI服务未配置，请设置 OPENAI_API_KEY 环境变量'
             }), 503
         
-        # 如果有缓存的分析数据，需要从原文件读取消息列表以生成 chat_sample
+        # 如果有缓存的分析数据，仍从原文件读取消息列表以生成 chat_sample
         if analysis_data:
-            # 读取原文件生成 messages
-            import re
             cache_messages = []
-            time_pattern = r'^(\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}:\d{2}) (.+)\((\d+)\)'
-            
-            with open(filepath, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
-            
-            i = 0
-            while i < len(lines):
-                line = lines[i].strip()
-                m = re.match(time_pattern, line)
-                if m:
-                    timestamp, sender, qq = m.group(1), m.group(2), m.group(3)
-                    content = ""
-                    if i + 1 < len(lines):
-                        next_line = lines[i + 1].strip()
-                        if not re.match(time_pattern, next_line):
-                            content = next_line
-                            i += 1
-                    cache_messages.append({'time': timestamp, 'sender': sender, 'qq': qq, 'content': content})
-                i += 1
-            
+            if filepath is not None and filepath.exists():
+                _conv, cache_messages, _warnings = _load_conversation_and_messages(filename)
+
             if summary_type == 'personal':
                 result = summarizer.generate_personal_summary(
                     analysis_data.get('stats', {}),
@@ -714,37 +874,12 @@ def generate_summary():
                     network_stats=analysis_data.get('network_stats')
                 )
             return jsonify(result)
-        
-        # 实时分析模式
-        # 根据类型获取统计数据
-        import re
-        messages = []
-        time_pattern = r'^(\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}:\d{2}) (.+)\((\d+)\)'
-        
-        with open(filepath, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-        
-        i = 0
-        while i < len(lines):
-            line = lines[i].strip()
-            m = re.match(time_pattern, line)
-            if m:
-                timestamp = m.group(1)
-                sender = m.group(2)
-                qq = m.group(3)
-                content = ""
-                if i + 1 < len(lines):
-                    next_line = lines[i + 1].strip()
-                    if not re.match(time_pattern, next_line):
-                        content = next_line
-                        i += 1
-                messages.append({
-                    'time': timestamp,
-                    'sender': sender,
-                    'qq': qq,
-                    'content': content
-                })
-            i += 1
+
+        # 实时分析模式：统一从导入层加载消息
+        if filepath is None or not filepath.exists():
+            return jsonify({'success': False, 'error': '文件不存在'}), 404
+
+        _conv, messages, _warnings = _load_conversation_and_messages(filename)
     
         
         result = None
@@ -753,12 +888,12 @@ def generate_summary():
             # 获取个人统计
             qq = data.get('qq')
             if not qq:
-                return jsonify({'success': False, 'error': '个人总结需要指定QQ号'}), 400
+                return jsonify({'success': False, 'error': '个人总结需要指定成员（QQ号/昵称）'}), 400
             
             analyzer = PersonalAnalyzer()
-            stats = analyzer.get_user_stats(str(filepath), qq)
+            stats = analyzer.get_user_stats_from_messages(messages, qq)
             if not stats:
-                return jsonify({'success': False, 'error': f'未找到QQ {qq} 的数据'}), 404
+                return jsonify({'success': False, 'error': f'未找到账号 {qq} 的数据'}), 404
             
             # 传递完整消息列表，由summarizer内部进行智能稀疏采样
             result = summarizer.generate_personal_summary(stats.to_dict(), messages=messages)
@@ -862,8 +997,15 @@ def generate_summary_stream():
         
         if not filename and not cached_data:
             return jsonify({'success': False, 'error': '未指定文件或缓存'}), 400
-        
-        filepath = Path('texts') / filename if filename else None
+
+        filepath = None
+        if filename:
+            try:
+                filepath = _safe_texts_file_path(filename)
+            except Exception as e:
+                if not cached_data:
+                    return jsonify({'success': False, 'error': str(e)}), 400
+
         if filepath and not filepath.exists() and not cached_data:
             return jsonify({'success': False, 'error': '文件不存在'}), 404
         
@@ -881,29 +1023,8 @@ def generate_summary_stream():
                 # 如果有缓存数据，需要重新从原文件读取聊天记录生成 chat_sample
                 chat_sample = ""
                 if cached_data and filepath and filepath.exists():
-                    # 读取原文件生成 chat_sample
-                    import re
-                    cache_messages = []
-                    time_pattern = r'^(\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}:\d{2}) (.+)\((\d+)\)'
-                    
-                    with open(filepath, 'r', encoding='utf-8') as f:
-                        lines = f.readlines()
-                    
-                    i = 0
-                    while i < len(lines):
-                        line = lines[i].strip()
-                        m = re.match(time_pattern, line)
-                        if m:
-                            timestamp, sender, qq = m.group(1), m.group(2), m.group(3)
-                            content = ""
-                            if i + 1 < len(lines):
-                                next_line = lines[i + 1].strip()
-                                if not re.match(time_pattern, next_line):
-                                    content = next_line
-                                    i += 1
-                            cache_messages.append({'time': timestamp, 'sender': sender, 'qq': qq, 'content': content})
-                        i += 1
-                    
+                    _conv, cache_messages, _warnings = _load_conversation_and_messages(filename)
+
                     if summary_type == 'personal':
                         target_qq = cached_data.get('stats', {}).get('qq', '')
                         chat_sample = summarizer._sparse_sample_messages(cache_messages, target_qq)
@@ -927,38 +1048,21 @@ def generate_summary_stream():
                         )
                         system_prompt = summarizer._get_system_prompt('group_and_network')
                 else:
-                    # 实时分析模式 - 解析消息
-                    import re
-                    messages = []
-                    time_pattern = r'^(\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}:\d{2}) (.+)\((\d+)\)'
-                    
-                    with open(filepath, 'r', encoding='utf-8') as f:
-                        lines = f.readlines()
-                    
-                    i = 0
-                    while i < len(lines):
-                        line = lines[i].strip()
-                        m = re.match(time_pattern, line)
-                        if m:
-                            timestamp, sender, qq = m.group(1), m.group(2), m.group(3)
-                            content = ""
-                            if i + 1 < len(lines):
-                                next_line = lines[i + 1].strip()
-                                if not re.match(time_pattern, next_line):
-                                    content = next_line
-                                    i += 1
-                            messages.append({'time': timestamp, 'sender': sender, 'qq': qq, 'content': content})
-                        i += 1
+                    if not filepath or not filepath.exists():
+                        yield f"data: {json.dumps({'type': 'error', 'message': '文件不存在'})}\n\n"
+                        return
+
+                    _conv, messages, _warnings = _load_conversation_and_messages(filename)
                     
                     if summary_type == 'personal':
                         qq = data.get('qq')
                         if not qq:
-                            yield f"data: {json.dumps({'type': 'error', 'message': '个人总结需要指定QQ号'})}\n\n"
+                            yield f"data: {json.dumps({'type': 'error', 'message': '个人总结需要指定成员（QQ号/昵称）'})}\n\n"
                             return
                         analyzer = PersonalAnalyzer()
-                        stats = analyzer.get_user_stats(str(filepath), qq)
+                        stats = analyzer.get_user_stats_from_messages(messages, qq)
                         if not stats:
-                            yield f"data: {json.dumps({'type': 'error', 'message': f'未找到QQ {qq} 的数据'})}\n\n"
+                            yield f"data: {json.dumps({'type': 'error', 'message': f'未找到账号 {qq} 的数据'})}\n\n"
                             return
                         # 使用稀疏采样生成聊天记录样本
                         chat_sample = summarizer._sparse_sample_messages(messages, qq)
@@ -1029,9 +1133,9 @@ def generate_summary_stream():
 def preview_chat_records(filename):
     """预览聊天记录"""
     try:
-        filepath = Path('texts') / filename
-        
-        if not filepath.exists() or filepath.suffix != '.txt':
+        try:
+            _conv, messages, _warnings = _load_conversation_and_messages(filename)
+        except FileNotFoundError:
             return jsonify({'success': False, 'error': '文件不存在'}), 404
         
         # 获取分页参数
@@ -1040,48 +1144,27 @@ def preview_chat_records(filename):
         filter_type = request.args.get('filter_type', 'all')  # all, date, qq
         filter_value = request.args.get('filter_value', '')
         
-        # 读取文件
-        import re
         records = []
-        time_pattern = r'^(\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}:\d{2}) (.+)\((\d+)\)'
-        
-        with open(filepath, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-        
-        i = 0
-        while i < len(lines):
-            line = lines[i].strip()
-            m = re.match(time_pattern, line)
-            if m:
-                timestamp = m.group(1)
-                sender = m.group(2)
-                qq = m.group(3)
-                content = ""
-                
-                # 获取消息内容
-                if i + 1 < len(lines):
-                    next_line = lines[i + 1].strip()
-                    if not re.match(time_pattern, next_line):
-                        content = next_line
-                        i += 1
-                
-                # 应用过滤
-                if filter_type == 'date':
-                    if not timestamp.startswith(filter_value):
-                        i += 1
-                        continue
-                elif filter_type == 'qq':
-                    if qq != filter_value:
-                        i += 1
-                        continue
-                
-                records.append({
-                    'timestamp': timestamp,
-                    'sender': sender,
-                    'qq': qq,
-                    'content': content[:100]  # 限制预览长度
-                })
-            i += 1
+        for msg in messages:
+            timestamp = msg.get('time', '')
+            sender = msg.get('sender', '')
+            qq = msg.get('qq', '')
+            content = msg.get('content', '')
+
+            # 应用过滤
+            if filter_type == 'date':
+                if filter_value and not str(timestamp).startswith(filter_value):
+                    continue
+            elif filter_type == 'qq':
+                if filter_value and str(qq) != filter_value:
+                    continue
+
+            records.append({
+                'timestamp': timestamp,
+                'sender': sender,
+                'qq': qq,
+                'content': (content or '')[:100]
+            })
         
         # 分页
         total = len(records)
@@ -1106,32 +1189,24 @@ def preview_chat_records(filename):
 def preview_chat_stats(filename):
     """获取聊天记录统计信息（用于过滤器）"""
     try:
-        filepath = Path('texts') / filename
-        
-        if not filepath.exists() or filepath.suffix != '.txt':
+        try:
+            _conv, messages, _warnings = _load_conversation_and_messages(filename)
+        except FileNotFoundError:
             return jsonify({'success': False, 'error': '文件不存在'}), 404
-        
-        # 读取文件获取统计
-        import re
+
         dates = set()
         qqs = {}
-        time_pattern = r'^(\d{4}-\d{2}-\d{2} \d{1,2}:\d{2}:\d{2}) (.+)\((\d+)\)'
-        
-        with open(filepath, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-        
-        for line in lines:
-            m = re.match(time_pattern, line.strip())
-            if m:
-                timestamp = m.group(1)
-                sender = m.group(2)
-                qq = m.group(3)
-                
-                date = timestamp.split(' ')[0]
+        for msg in messages:
+            timestamp = msg.get('time', '')
+            sender = msg.get('sender', '')
+            qq = msg.get('qq', '')
+
+            if timestamp and ' ' in timestamp:
+                date = timestamp.split(' ', 1)[0]
                 dates.add(date)
-                
-                if qq not in qqs:
-                    qqs[qq] = sender
+
+            if qq and qq not in qqs:
+                qqs[qq] = sender
         
         return jsonify({
             'success': True,
@@ -1175,30 +1250,33 @@ def get_chat_examples():
         if not word or not filename:
             return jsonify({'success': False, 'error': '缺少必要参数'}), 400
         
-        # 加载数据
-        filepath = Path('texts') / filename
+        try:
+            filepath = _safe_texts_file_path(filename)
+        except Exception as e:
+            return jsonify({'success': False, 'error': str(e)}), 400
+
         if not filepath.exists():
             return jsonify({'success': False, 'error': '文件不存在'}), 404
-        
-        from src.LineProcess import process_lines_data
+
+        from src.utils import clean_message_content
 
         # 优先走缓存（按文件 mtime 自动失效）
         file_mtime = filepath.stat().st_mtime
         cached = _CHAT_EXAMPLES_CACHE.get(filename)
-        if cached and cached.get('mtime') == file_mtime:
+        if cached and cached.get('mtime') == file_mtime and cached.get('ver') == _CHAT_EXAMPLES_CLEANER_VERSION:
             records = cached.get('records', [])
         else:
-            _, all_lines_data, _ = process_lines_data(str(filepath), mode='all')
-            records = [
-                {
-                    'timestamp': ld.timepat,
-                    'sender': ld.sender,
-                    'qq': ld.qq,
-                    'clean_text': ld.clean_text or ''
-                }
-                for ld in all_lines_data
-            ]
-            _CHAT_EXAMPLES_CACHE[filename] = {'mtime': file_mtime, 'records': records}
+            _conv, messages, _warnings = _load_conversation_and_messages(filename)
+            records = []
+            for m in messages:
+                content = m.get('content', '')
+                records.append({
+                    'timestamp': m.get('time', ''),
+                    'sender': m.get('sender', ''),
+                    'qq': m.get('qq', ''),
+                    'clean_text': clean_message_content(content) if content else ''
+                })
+            _CHAT_EXAMPLES_CACHE[filename] = {'mtime': file_mtime, 'ver': _CHAT_EXAMPLES_CLEANER_VERSION, 'records': records}
         
         # 过滤包含热词的消息
         examples = []

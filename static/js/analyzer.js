@@ -16,9 +16,18 @@ async function analyzePersonal() {
         clearHotWordsCache();
     }
     
-    const qq = document.getElementById('qq-input').value;
-    if (!qq) {
-        showStatusMessage('error', '请输入QQ号');
+    const qqOrName = document.getElementById('qq-input').value;
+    if (!qqOrName) {
+        showStatusMessage('error', '请输入QQ号或昵称');
+        return;
+    }
+
+    const resolved = (typeof resolveMemberQuery === 'function')
+        ? resolveMemberQuery(qqOrName)
+        : { id: qqOrName, member: null };
+
+    if (!resolved?.id) {
+        showStatusMessage('error', '未找到匹配的成员（请输入QQ号或昵称）');
         return;
     }
     
@@ -27,7 +36,7 @@ async function analyzePersonal() {
     
     try {
         updateProgress('personal', 40, '获取分析结果...');
-        const response = await fetch(`${API_BASE}/personal/${qq}?file=${appState.currentFile}`);
+        const response = await fetch(`${API_BASE}/personal/${encodeURIComponent(resolved.id)}?file=${appState.currentFile}`);
         const data = await response.json();
         
         if (!data.success) {
@@ -57,7 +66,10 @@ async function analyzePersonal() {
         }
         
         hideProgress('personal', true);
-        showStatusMessage('success', `成功分析 ${stats.nickname}(${stats.qq}) 的数据`);
+        const disp = (typeof formatMemberDisplay === 'function')
+            ? formatMemberDisplay(resolved.member, stats.nickname)
+            : { main: `${stats.nickname} (${stats.qq})`, uidSmall: '' };
+        showStatusMessage('success', `成功分析 ${disp.main} 的数据`);
     } catch (error) {
         console.error('个人分析失败:', error);
         hideProgress('personal', false);
@@ -133,6 +145,36 @@ async function analyzeGroup() {
             const peakHours = stats.peak_hours.length > 0 ? 
                              stats.peak_hours.map(h => `${h}:00`).join(', ') : '无数据';
             document.getElementById('stat-peak-hour').textContent = peakHours;
+
+            // 结构化元数据统计
+            const setIfExists = (id, value) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                if (value === undefined || value === null) return;
+                el.textContent = value;
+            };
+            setIfExists('stat-system-messages', stats.system_messages);
+            setIfExists('stat-recalled-messages', stats.recalled_messages);
+            setIfExists('stat-mention-messages', stats.mention_messages);
+            setIfExists('stat-reply-messages', stats.reply_messages);
+            setIfExists('stat-media-messages', stats.media_messages);
+
+            // 谁最多（带数值）
+            const formatTop = (item) => {
+                if (!item) return '-';
+                const member = appState.memberIndex?.byId?.[item.qq] || null;
+                if (typeof formatMemberDisplay === 'function') {
+                    const disp = formatMemberDisplay(member, item.name || item.qq);
+                    return `${disp.main} × ${item.count}`;
+                }
+                const name = item.name || item.qq;
+                return `${name} (${item.qq}) × ${item.count}`;
+            };
+            setIfExists('stat-top-recaller', formatTop(stats.top_recaller));
+            setIfExists('stat-top-image-sender', formatTop(stats.top_image_sender));
+            setIfExists('stat-top-emoji-sender', formatTop(stats.top_emoji_sender));
+            setIfExists('stat-top-forward-sender', formatTop(stats.top_forward_sender));
+            setIfExists('stat-top-file-sender', formatTop(stats.top_file_sender));
             
             // 绘制图表
             drawMonthlyTrendChart(stats.monthly_trend);
@@ -232,7 +274,11 @@ async function analyzeNetwork() {
             // 最受欢迎成员 - 显示昵称
             const popularUser = stats.most_popular_user;
             if (popularUser) {
-                const popularName = popularUser.name || `QQ:${popularUser.qq}`;
+                const m = appState.memberIndex?.byId?.[popularUser.qq];
+                const disp = (typeof formatMemberDisplay === 'function')
+                    ? formatMemberDisplay(m || popularUser, popularUser.name)
+                    : { main: (popularUser.name || popularUser.qq), uidSmall: '' };
+                const popularName = disp.main;
                 document.getElementById('stat-most-popular').textContent = 
                     `${popularName} (${(popularUser.centrality * 100).toFixed(1)}%)`;
             } else {
@@ -242,8 +288,14 @@ async function analyzeNetwork() {
             // 最活跃互动对
             const activePair = stats.most_active_pair;
             if (activePair) {
-                const name1 = activePair.name1 || activePair.pair[0];
-                const name2 = activePair.name2 || activePair.pair[1];
+                const id1 = activePair.pair?.[0];
+                const id2 = activePair.pair?.[1];
+                const m1 = id1 ? appState.memberIndex?.byId?.[id1] : null;
+                const m2 = id2 ? appState.memberIndex?.byId?.[id2] : null;
+                const d1 = (typeof formatMemberDisplay === 'function') ? formatMemberDisplay(m1, activePair.name1) : { main: (activePair.name1 || id1) };
+                const d2 = (typeof formatMemberDisplay === 'function') ? formatMemberDisplay(m2, activePair.name2) : { main: (activePair.name2 || id2) };
+                const name1 = d1.main;
+                const name2 = d2.main;
                 document.getElementById('stat-active-pair').textContent = 
                     `${name1} ↔ ${name2} (${activePair.weight.toFixed(1)})`;
             } else {
@@ -252,8 +304,27 @@ async function analyzeNetwork() {
             
             updateProgress('network', 90, '渲染网络图 (稳定中)...');
             
+            // 根据成员索引增强节点展示：优先 Name + QQ，并在 tooltip 中补充 UID
+            const enrichedNodes = (stats.nodes || []).map(n => {
+                const m = appState.memberIndex?.byId?.[n.id] || null;
+                const disp = (typeof formatMemberDisplay === 'function')
+                    ? formatMemberDisplay(m, n.label)
+                    : { main: n.label || n.id, uidSmall: '' };
+
+                // label 建议短一些，图上展示 Name+QQ；tooltip 展示 uid
+                const titleParts = [];
+                if (disp.main) titleParts.push(disp.main);
+                if (disp.uidSmall) titleParts.push(disp.uidSmall);
+                if (n.id) titleParts.push(`id:${n.id}`);
+                return {
+                    ...n,
+                    label: disp.main || (n.label || n.id),
+                    title: titleParts.join('\n')
+                };
+            });
+
             // 渲染网络图
-            renderNetworkGraph(stats.nodes, stats.edges);
+            renderNetworkGraph(enrichedNodes, stats.edges);
             
             // 显示保存按钮
             if (typeof showSaveButton === 'function') {

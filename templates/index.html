@@ -63,6 +63,9 @@
                 <button class="tab-button" data-tab="preview">
                     📋 聊天预览
                 </button>
+                <button class="tab-button" data-tab="compare">
+                    🆚 对比
+                </button>
                 <button class="tab-button" data-tab="ai-config">
                     🤖 AI总结
                 </button>
@@ -81,8 +84,8 @@
                     </div>
                     <div class="tab-body">
                         <div class="input-group">
-                            <label for="qq-input">QQ号:</label>
-                            <input type="text" id="qq-input" placeholder="选择QQ号或输入" list="qq-list">
+                            <label for="qq-input">QQ号/昵称:</label>
+                            <input type="text" id="qq-input" placeholder="输入QQ号或昵称（支持模糊匹配），或从下拉选择" list="qq-list">
                             <datalist id="qq-list"></datalist>
                             <button id="personal-analyze-btn" class="btn btn-primary" disabled>
                                 分析个人
@@ -213,6 +216,84 @@
                                     <div class="stat-content">
                                         <div class="stat-label">最活跃时段</div>
                                         <div class="stat-value" id="stat-peak-hour">-</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 结构化元数据统计 -->
+                            <div class="stats-grid" style="margin-top: 10px;">
+                                <div class="stat-card">
+                                    <div class="stat-icon">🧾</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">系统事件</div>
+                                        <div class="stat-value" id="stat-system-messages">-</div>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">🗑️</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">撤回消息</div>
+                                        <div class="stat-value" id="stat-recalled-messages">-</div>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">@</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">含@提及</div>
+                                        <div class="stat-value" id="stat-mention-messages">-</div>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">↩️</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">回复消息</div>
+                                        <div class="stat-value" id="stat-reply-messages">-</div>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">📎</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">含媒体/附件</div>
+                                        <div class="stat-value" id="stat-media-messages">-</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 新增：谁最多（带数值） -->
+                            <div class="stats-grid" style="margin-top: 10px;">
+                                <div class="stat-card">
+                                    <div class="stat-icon">🗑️</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">最常撤回</div>
+                                        <div class="stat-value" id="stat-top-recaller">-</div>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">🖼️</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">发图片最多</div>
+                                        <div class="stat-value" id="stat-top-image-sender">-</div>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">🙂</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">发表情最多</div>
+                                        <div class="stat-value" id="stat-top-emoji-sender">-</div>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">🔁</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">转发最多</div>
+                                        <div class="stat-value" id="stat-top-forward-sender">-</div>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">📄</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">发文件最多</div>
+                                        <div class="stat-value" id="stat-top-file-sender">-</div>
                                     </div>
                                 </div>
                             </div>
@@ -381,6 +462,59 @@
                     </div>
                 </div>
 
+                <!-- 对比标签页（US3） -->
+                <div class="tab-pane" id="compare-tab">
+                    <div class="tab-header">
+                        <h2>对比</h2>
+                        <p class="tab-description">选择两段聊天并排对比关键指标（私聊也支持）</p>
+                    </div>
+                    <div class="tab-body">
+                        <div class="compare-panel">
+                            <div class="compare-selectors">
+                                <div class="input-group" style="flex-wrap: wrap; gap: 10px; align-items: center;">
+                                    <label for="compare-left-file">左侧文件:</label>
+                                    <select id="compare-left-file" class="select" style="min-width: 260px;"></select>
+
+                                    <label for="compare-right-file">右侧文件:</label>
+                                    <select id="compare-right-file" class="select" style="min-width: 260px;"></select>
+
+                                    <button id="compare-run-btn" class="btn btn-primary">开始对比</button>
+                                </div>
+                                <div class="hint-text" style="margin-top: 6px; color: #666;">
+                                    提示：对比会复用群体/网络分析逻辑；网络计算可能较慢，可在需要时再开启。
+                                </div>
+                            </div>
+
+                            <div id="compare-progress" class="progress-container" style="display: none;">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="compare-progress-fill"></div>
+                                </div>
+                                <div class="progress-text" id="compare-progress-text">正在对比中...</div>
+                            </div>
+
+                            <div id="compare-result" class="compare-result" style="display: none;">
+                                <div class="compare-columns">
+                                    <div class="compare-col">
+                                        <h3>左侧</h3>
+                                        <div id="compare-left-summary" class="compare-summary"></div>
+                                    </div>
+                                    <div class="compare-col">
+                                        <h3>右侧</h3>
+                                        <div id="compare-right-summary" class="compare-summary"></div>
+                                    </div>
+                                </div>
+
+                                <div class="compare-diff">
+                                    <h3>差异</h3>
+                                    <div id="compare-diff-table" class="compare-diff-table"></div>
+                                    <h4 style="margin-top: 12px;">媒体类型差异</h4>
+                                    <div id="compare-media-diff" class="compare-diff-table"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- 聊天预览标签页 -->
                 <div class="tab-pane" id="preview-tab">
                     <div class="tab-header">
@@ -396,7 +530,7 @@
                                 </select>
                             </div>
                             <div class="filter-group">
-                                <label for="preview-qq-filter">按QQ号筛选:</label>
+                                <label for="preview-qq-filter">按成员筛选:</label>
                                 <select id="preview-qq-filter" class="filter-select">
                                     <option value="">-- 所有成员 --</option>
                                 </select>
@@ -419,7 +553,7 @@
                                 <thead>
                                     <tr>
                                         <th style="width: 180px;">时间</th>
-                                        <th style="width: 150px;">发言人(QQ)</th>
+                                        <th style="width: 150px;">发言人</th>
                                         <th>消息内容</th>
                                     </tr>
                                 </thead>
@@ -743,6 +877,7 @@
     <script src="{{ url_for('static', filename='js/analysis-cache.js') }}"></script>
     <script src="{{ url_for('static', filename='js/file-handler.js') }}"></script>
     <script src="{{ url_for('static', filename='js/analyzer.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/compare.js') }}"></script>
     <script src="{{ url_for('static', filename='js/ai-summary.js') }}"></script>
     <script src="{{ url_for('static', filename='js/ui.js') }}"></script>
     <script src="{{ url_for('static', filename='js/network.js') }}"></script>

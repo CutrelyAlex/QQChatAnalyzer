@@ -214,9 +214,12 @@ async function fetchWordExamples(word, containerId) {
     
     let url = `${API_BASE}/chat-examples?word=${encodeURIComponent(word)}&file=${encodeURIComponent(appState.currentFile)}`;
     if (isPersonal) {
-        const qq = document.getElementById('qq-input')?.value;
-        if (qq) {
-            url += `&qq=${encodeURIComponent(qq)}`;
+        const q = document.getElementById('qq-input')?.value;
+        if (q) {
+            const resolved = (typeof resolveMemberQuery === 'function') ? resolveMemberQuery(q) : { id: q };
+            if (resolved?.id) {
+                url += `&qq=${encodeURIComponent(resolved.id)}`;
+            }
         }
     }
     

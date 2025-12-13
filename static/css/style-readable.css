@@ -239,6 +239,46 @@ html[data-theme="readable"] .hot-words-container {
     box-shadow: none !important;
 }
 
+/* ======================================
+   对比页
+   ====================================== */
+
+html[data-theme="readable"] .compare-panel {
+    background: #ffffff !important;
+    border: 1px solid #e5e7eb !important;
+    box-shadow: var(--box-shadow) !important;
+}
+
+html[data-theme="readable"] .compare-col {
+    background: #ffffff !important;
+    border: 1px solid #e5e7eb !important;
+}
+
+html[data-theme="readable"] .compare-col h3 {
+    text-shadow: none !important;
+    letter-spacing: 0 !important;
+    color: #111827 !important;
+}
+
+html[data-theme="readable"] .compare-summary .summary-row {
+    background: #f9fafb !important;
+    border: 1px solid #e5e7eb !important;
+}
+
+html[data-theme="readable"] .compare-diff {
+    border-top-color: #e5e7eb !important;
+}
+
+html[data-theme="readable"] .compare-diff-table table {
+    background: #ffffff !important;
+    border: 1px solid #e5e7eb !important;
+}
+
+html[data-theme="readable"] .compare-diff-table th {
+    background: #f3f4f6 !important;
+    color: #111827 !important;
+}
+
 html[data-theme="readable"] .hot-words-table thead {
     background: #f9fafb !important;
     color: #111827 !important;

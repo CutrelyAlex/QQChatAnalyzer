@@ -233,7 +233,7 @@ html::before {
 .panel-body {
     display: flex;
     gap: 16px;
-    align-items: center;
+    align-items: flex-start;
     flex-wrap: wrap;
 }
 
@@ -275,8 +275,21 @@ html::before {
 }
 
 .file-info {
-    flex: 1;
-    min-width: 300px;
+    /* Always sit on its own row to avoid overlapping the load controls */
+    flex: 0 0 100%;
+    min-width: 0;
+}
+
+/* Load status message should also take a full row in the flex layout */
+.panel-body > .status-message {
+    flex: 0 0 100%;
+}
+
+/* 文件加载按钮 */
+#load-btn {
+    white-space: nowrap;
+    min-width: 110px;
+    flex: 0 0 auto;
 }
 
 .info-label {
@@ -289,6 +302,12 @@ html::before {
     color: var(--accent-cyan);
     font-family: 'Courier New', monospace;
     text-shadow: 0 0 5px rgba(0, 255, 255, 0.3);
+
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    line-height: 1.4;
 }
 
 .status-message {
@@ -2739,4 +2758,117 @@ html::before {
     padding: 8px 20px;
     font-size: 13px;
     align-self: flex-start;
+}
+
+/* ======================================
+   US3: 对比标签页样式
+   ====================================== */
+
+.compare-panel {
+    background: rgba(20, 24, 41, 0.6);
+    border: 1px solid var(--accent-cyan);
+    border-radius: var(--border-radius);
+    padding: 14px;
+    box-shadow: 0 0 12px rgba(0, 255, 255, 0.18);
+}
+
+.compare-columns {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.compare-col {
+    flex: 1 1 320px;
+    border: 1px solid rgba(0, 255, 0, 0.35);
+    border-radius: var(--border-radius);
+    padding: 12px;
+    background: rgba(10, 14, 39, 0.45);
+}
+
+.compare-col h3 {
+    margin: 0;
+    font-size: 16px;
+    letter-spacing: 1px;
+    text-shadow: 0 0 8px rgba(0, 255, 255, 0.35);
+}
+
+.compare-summary {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.compare-summary .summary-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: var(--border-radius);
+    background: rgba(20, 24, 41, 0.55);
+    border: 1px solid rgba(0, 255, 255, 0.25);
+}
+
+.compare-summary .summary-row .label {
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.compare-summary .summary-row .value {
+    font-weight: bold;
+    color: var(--text-color);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.compare-diff {
+    margin-top: 16px;
+    border-top: 1px dashed rgba(0, 255, 255, 0.35);
+    padding-top: 12px;
+}
+
+.compare-diff h3,
+.compare-diff h4 {
+    margin: 0 0 10px 0;
+}
+
+.compare-diff-table table {
+    width: 100%;
+    border-collapse: collapse;
+    background: rgba(10, 14, 39, 0.35);
+    border: 1px solid rgba(0, 255, 0, 0.35);
+}
+
+.compare-diff-table th,
+.compare-diff-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(0, 255, 0, 0.12);
+    text-align: left;
+    font-size: 13px;
+}
+
+.compare-diff-table th {
+    background: rgba(0, 255, 255, 0.08);
+    color: var(--text-color);
+    font-weight: bold;
+}
+
+.compare-diff-table tr:last-child td {
+    border-bottom: none;
+}
+
+.compare-diff-table .delta-pos {
+    color: var(--success-color);
+    font-weight: bold;
+}
+
+.compare-diff-table .delta-neg {
+    color: var(--danger-color);
+    font-weight: bold;
+}
+
+.compare-diff-table .delta-zero {
+    color: var(--text-tertiary);
 }

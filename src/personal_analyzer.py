@@ -65,6 +65,7 @@ class PersonalStats:
         self.emoji_count = 0
         self.link_count = 0
         self.recall_count = 0
+        self.system_count = 0
         
         # 关键词
         self.top_words = []  # [(word, count), ...]
@@ -95,6 +96,7 @@ class PersonalStats:
             'emoji_count': self.emoji_count,
             'link_count': self.link_count,
             'recall_count': self.recall_count,
+            'system_count': self.system_count,
             # 转换热词格式: [(word, count)] -> [{word, count}]
             'top_words': [{'word': w, 'count': c} for w, c in self.top_words[:20]],
             'max_streak_days': self.max_streak_days
@@ -195,6 +197,100 @@ class PersonalAnalyzer:
             self._post_process_stats(stats, all_messages, name_to_qq)
         
         return stats_dict    
+
+    def analyze_messages(self, messages, qq_list=None, qq_names=None):
+        """基于消息列表进行个人分析。
+
+        说明：
+        - 用于支持 JSON 导入后的统一分析流程（消息来自导入/归一化层）
+        - messages 期望形态：[{time/sender/qq/content}, ...]
+        - 为兼容旧内部实现，会把 time 映射为 timestamp
+
+        Args:
+            messages: 消息列表
+            qq_list: 仅分析这些账号ID（为空则分析所有）
+            qq_names: 可选的账号ID到显示名映射 {qq: name}
+
+        Returns:
+            {qq: PersonalStats}
+        """
+        stats_dict = {}
+
+        if not messages:
+            return stats_dict
+
+        # 第一遍：收集所有账号与基本信息
+        collected_qq_names = {}
+        name_to_qq = {}
+        for m in messages:
+            qq = (m.get('qq') or '').strip()
+            sender = (m.get('sender') or '').strip()
+            if not qq:
+                continue
+            if qq in SYSTEM_QQ_NUMBERS:
+                continue
+            if sender:
+                collected_qq_names[qq] = sender
+                # 同名可能对应多个账号，优先保留首次出现
+                if sender not in name_to_qq:
+                    name_to_qq[sender] = qq
+
+        # 合并外部提供的名称映射
+        if isinstance(qq_names, dict):
+            for k, v in qq_names.items():
+                if k and v and k not in collected_qq_names:
+                    collected_qq_names[str(k)] = str(v)
+
+        # 初始化统计对象
+        if qq_list:
+            for qq in qq_list:
+                qq = str(qq)
+                stats_dict[qq] = PersonalStats(qq, collected_qq_names.get(qq, qq))
+        else:
+            for qq, name in collected_qq_names.items():
+                stats_dict[qq] = PersonalStats(qq, name)
+
+        # 第二遍：收集消息数据（对齐内部字段名 timestamp）
+        all_messages = []
+        for m in messages:
+            qq = (m.get('qq') or '').strip()
+            if not qq or qq in SYSTEM_QQ_NUMBERS:
+                continue
+
+            # 系统事件不计入个人统计（但保留计数口径以便 UI 可展示）
+            if m.get('is_system'):
+                continue
+
+            if qq_list and qq not in stats_dict:
+                continue
+
+            ts = m.get('timestamp') or m.get('time') or ''
+            all_messages.append({
+                'timestamp': ts,
+                'time': ts,
+                'sender': m.get('sender', ''),
+                'qq': qq,
+                'content': m.get('content', ''),
+
+                # 结构化字段（可能为空）
+                'is_system': bool(m.get('is_system')),
+                'is_recalled': bool(m.get('is_recalled')),
+                'message_type': m.get('message_type'),
+                'resource_types': m.get('resource_types') if isinstance(m.get('resource_types'), list) else [],
+                'mentions': m.get('mentions') if isinstance(m.get('mentions'), list) else [],
+                'mention_count': int(m.get('mention_count') or 0),
+                'reply_to_qq': m.get('reply_to_qq'),
+            })
+
+        # 处理消息
+        for msg in all_messages:
+            self._process_message(msg, stats_dict, name_to_qq)
+
+        # 后处理（计算派生指标）
+        for qq, stats in stats_dict.items():
+            self._post_process_stats(stats, all_messages, name_to_qq)
+
+        return stats_dict
     
     
     
@@ -213,13 +309,17 @@ class PersonalAnalyzer:
         qq = msg['qq']
         stats = stats_dict[qq]
         content = msg['content']
-        timestamp = msg['timestamp']
+        timestamp = msg.get('timestamp') or msg.get('time') or ''
         
         # 基本统计
         stats.total_messages += 1
         
         # 日期处理
-        date_str, time_str = timestamp.split(' ')
+        if ' ' in timestamp:
+            date_str, time_str = timestamp.split(' ', 1)
+        else:
+            # 时间格式异常时兜底
+            date_str, time_str = (timestamp[:10] or 'unknown'), (timestamp[11:] if len(timestamp) > 11 else '00:00:00')
         stats.active_days.add(date_str)
         stats.message_dates.append(date_str)
         
@@ -260,16 +360,45 @@ class PersonalAnalyzer:
         # 说明：content 来源于 lines[i+1].strip()，不包含原始换行符，因此与旧 replace 逻辑结果一致。
         clean_content = clean_message_content(content)
         stats.avg_message_length += len(clean_content)
-        stats.image_count += content.count('[图片]')
-        stats.emoji_count += content.count('[表情]')
-        stats.link_count += len(_HTTP_PATTERN.findall(content))
-        stats.recall_count += 1 if '撤回了一条消息' in content else 0
+        rtypes = msg.get('resource_types')
+        if not isinstance(rtypes, list):
+            rtypes = []
+        rtypes = [str(t) for t in rtypes if t]
+
+        # media/link 优先用结构化资源类型
+        if rtypes:
+            stats.image_count += sum(1 for t in rtypes if t == 'image')
+            stats.emoji_count += sum(1 for t in rtypes if t in ('emoji', 'sticker'))
+            stats.link_count += 1 if ('link' in rtypes) else 0
+        else:
+            stats.image_count += content.count('[图片]')
+            stats.emoji_count += content.count('[表情]')
+            stats.link_count += len(_HTTP_PATTERN.findall(content))
+
+        is_recalled = bool(msg.get('is_recalled')) or ('撤回了一条消息' in content)
+        stats.recall_count += 1 if is_recalled else 0
+
+        if bool(msg.get('is_system')):
+            stats.system_count += 1
+
+        # reply 次数
+        if msg.get('reply_to_qq') or str(msg.get('message_type') or '') == 'reply':
+            stats.reply_count += 1
         
-        # @检测
-        mentions = _MENTION_PATTERN.findall(content)
-        
-        # 记录此用户的@次数
-        stats.at_count += len(mentions)
+        # @检测：优先用结构化 mentions
+        mention_count = 0
+        if isinstance(msg.get('mentions'), list) and msg.get('mentions'):
+            mention_count = len([x for x in msg.get('mentions') if x])
+        elif msg.get('mention_count'):
+            try:
+                mention_count = int(msg.get('mention_count') or 0)
+            except Exception:
+                mention_count = 0
+        else:
+            mentions = _MENTION_PATTERN.findall(content)
+            mention_count = len(mentions)
+
+        stats.at_count += mention_count
     
     def _post_process_stats(self, stats, all_messages, name_to_qq=None):
         """后处理统计数据
@@ -315,42 +444,50 @@ class PersonalAnalyzer:
             
             stats.max_streak_days = max_streak
         
-        # 互动对象分析 - 统计此用户@了谁
+        # 互动对象分析 - 统计此用户@了谁（优先结构化 mentions）
         interactions = Counter()
         for msg in all_messages:
             if msg['qq'] == stats.qq:
-                # 查找此消息中的所有@
-                mentions = _AT_NAME_PATTERN.findall(msg['content'])
-                for mention_name in mentions:
-                    # 尝试将用户名映射到QQ
-                    if name_to_qq and mention_name in name_to_qq:
-                        mention_qq = name_to_qq[mention_name]
-                        interactions[mention_qq] += 1
-                    else:
-                        # 如果没有映射，就用用户名本身
-                        interactions[mention_name] += 1
+                if isinstance(msg.get('mentions'), list) and msg.get('mentions'):
+                    for target in msg.get('mentions'):
+                        if target:
+                            interactions[str(target)] += 1
+                else:
+                    # 旧兜底：从文本里抓 @昵称
+                    mentions = _AT_NAME_PATTERN.findall(msg['content'])
+                    for mention_name in mentions:
+                        if name_to_qq and mention_name in name_to_qq:
+                            interactions[name_to_qq[mention_name]] += 1
+                        else:
+                            interactions[mention_name] += 1
         
         stats.top_interactions = interactions.most_common(10)
         
-        # 计算此用户被@的次数
+        # 计算此用户被@的次数（优先结构化 mentions）
         being_at_count = 0
         for msg in all_messages:
-            mentions = _AT_NAME_PATTERN.findall(msg['content'])
-            for mention_name in mentions:
-                # 检查是否@了这个用户
-                if name_to_qq and mention_name in name_to_qq:
-                    if name_to_qq[mention_name] == stats.qq:
-                        being_at_count += 1
-                # 或者直接按昵称匹配
-                elif mention_name == stats.nickname:
+            if msg.get('qq') == stats.qq:
+                continue
+            if isinstance(msg.get('mentions'), list) and msg.get('mentions'):
+                if stats.qq in [str(x) for x in msg.get('mentions') if x]:
                     being_at_count += 1
+            else:
+                mentions = _AT_NAME_PATTERN.findall(msg['content'])
+                for mention_name in mentions:
+                    if name_to_qq and mention_name in name_to_qq:
+                        if name_to_qq[mention_name] == stats.qq:
+                            being_at_count += 1
+                    elif mention_name == stats.nickname:
+                        being_at_count += 1
         
         stats.being_at_count = being_at_count
         
-        # 热词提取 - 使用 CutWords 进行分词
+        # 热词提取 - 使用 CutWords 进行分词（默认排除系统/撤回）
         user_messages = []
         for msg in all_messages:
             if msg['qq'] == stats.qq:
+                if msg.get('is_system') or msg.get('is_recalled'):
+                    continue
                 content = msg['content']
                 # 清理内容
                 clean = clean_message_content(content).strip()
@@ -371,6 +508,11 @@ class PersonalAnalyzer:
         """获取单个用户的统计"""
         stats_dict = self.analyze_file(filepath, [qq])
         return stats_dict.get(qq)
+
+    def get_user_stats_from_messages(self, messages, qq, qq_names=None):
+        """从消息列表获取单个用户的统计（用于 JSON/统一导入层）。"""
+        stats_dict = self.analyze_messages(messages, [qq], qq_names=qq_names)
+        return stats_dict.get(str(qq))
     
     def get_all_stats(self, filepath):
         """获取所有用户的统计"""

@@ -69,7 +69,7 @@ async function loadFile() {
         // 加载预览筛选器
         await loadPreviewFilters();
         
-        // 加载QQ列表到datalist
+        // 加载成员列表到 datalist（QQ号/昵称）
         await loadQQList(filename);
         
         // 异步估算Token（不阻塞UI）
@@ -145,7 +145,7 @@ async function loadPreviewFilters() {
             dateSelect.appendChild(option);
         });
         
-        // 填充QQ筛选器
+        // 填充成员筛选器（QQ号/昵称）
         const qqSelect = document.getElementById('preview-qq-filter');
         qqSelect.innerHTML = '<option value="">-- 所有成员 --</option>';
         data.qqs.forEach(item => {
@@ -161,29 +161,40 @@ async function loadPreviewFilters() {
 }
 
 async function loadQQList(filename) {
-    /**加载QQ列表到datalist中以供选择*/
+    /**加载成员列表到 datalist 中以供选择（QQ号/昵称）*/
     try {
         const response = await fetch(`${API_BASE}/personal/list/${filename}`);
         const data = await response.json();
         
         if (!data.success) {
-            console.error('加载QQ列表失败');
+            console.error('加载成员列表失败');
             return;
         }
         
         const datalist = document.getElementById('qq-list');
         datalist.innerHTML = '';
+
+        // 保存到全局索引：用于“输入QQ或昵称 -> internal id” 的解析
+        if (Array.isArray(data.users)) {
+            appState.members = data.users;
+            if (typeof buildMemberIndex === 'function') {
+                appState.memberIndex = buildMemberIndex(data.users);
+            }
+        }
         
         if (data.users && data.users.length > 0) {
             data.users.forEach(user => {
                 const option = document.createElement('option');
-                option.value = user.qq;
-                option.textContent = `${user.name}(${user.qq})`;
+                // datalist 的 value 是用户会“输入/选择”的内容：优先 QQ号，其次昵称
+                const qq = (user.qq || '').toString().trim();
+                const name = (user.name || '').toString().trim();
+                option.value = qq || name;
+                option.textContent = qq ? `${name}(${qq})` : name;
                 datalist.appendChild(option);
             });
         }
     } catch (error) {
-        console.error('加载QQ列表失败:', error);
+        console.error('加载成员列表失败:', error);
     }
 }
 

@@ -6,6 +6,44 @@ from functools import lru_cache
 from .RemoveWords import remove_words
 from .utils import SYSTEM_QQ_NUMBERS, POLLUTED_PHRASES, MENTION_PATTERN, AT_SYMBOL_PATTERN
 
+# 额外噪声过滤：图片/转发占位、XML/资源字段、hash 等
+_HEX_TOKEN_RE = re.compile(r'^[0-9a-fA-F]{16,}$')
+_ALNUM_LONG_TOKEN_RE = re.compile(r'^[A-Za-z0-9]{18,}$')
+_MIXED_IDISH_TOKEN_RE = re.compile(r'^(?=(?:.*[A-Z]){2,})(?=.*[a-z])(?=.*\d)[A-Za-z0-9]{8,}$')
+_NOISE_WORDS = frozenset({
+    '合并转发', '聊天记录',
+    'xml', 'msg', 'serviceid', 'templateid', 'action', 'brief', 'm_resid', 'm_filename',
+    'resid', 'viewmultimsg', 'title', 'color', 'size', 'version',
+    'http', 'https', 'www', 'com', 'cn', 'net', 'org',
+    'jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp',
+    'mp4', 'mov', 'mkv', 'mp3', 'amr', 'wav',
+    'zip', 'rar', '7z', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+})
+
+
+def _is_noise_token(word: str) -> bool:
+    if not word:
+        return True
+    w = word.strip()
+    if not w:
+        return True
+    wl = w.lower()
+    if wl in _NOISE_WORDS:
+        return True
+    if _HEX_TOKEN_RE.match(w):
+        return True
+    if '%' in w:
+        return True
+    if _ALNUM_LONG_TOKEN_RE.match(w) and (not w.isdigit()):
+        return True
+    # exporter/内部 id 片段（短但很“随机”的大小写+数字组合）
+    if _MIXED_IDISH_TOKEN_RE.match(w):
+        return True
+    # hashed filename or obvious resource suffix
+    if re.search(r'\.(jpg|jpeg|png|gif|webp|bmp|mp4|mov|mkv|mp3|amr|wav)$', wl):
+        return True
+    return False
+
 # 局部别名（避免重复属性查找）
 _MENTION_PATTERN = MENTION_PATTERN
 _AT_PATTERN = AT_SYMBOL_PATTERN
@@ -72,7 +110,7 @@ def cut_words(lines_to_process : list, top_words_num: int, nicknames: list = Non
         words.extend(
             word
             for word in jieba.cut(s_cleaned, cut_all=False)
-            if len(word) > 1 and word not in remove_words
+            if len(word) > 1 and word not in remove_words and (not _is_noise_token(word))
         )
     
     word_counts = collections.Counter(words)

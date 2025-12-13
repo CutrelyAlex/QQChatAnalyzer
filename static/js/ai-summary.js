@@ -29,14 +29,20 @@ async function generateSummary(type) {
             requestData.cache_id = selectedCacheId;
         }
         
-        // 如果是个人总结，需要QQ号
+        // 如果是个人总结，需要指定成员（支持 QQ号 或 昵称，内部解析为 participant_id）
         if (type === 'personal') {
-            const qq = document.getElementById('qq-input').value;
-            if (!qq) {
-                showSummaryError('请先输入QQ号并进行个人分析');
+            const q = document.getElementById('qq-input').value;
+            if (!q) {
+                showSummaryError('请先输入QQ号或昵称并进行个人分析');
                 return;
             }
-            requestData.qq = qq;
+
+            const resolved = (typeof resolveMemberQuery === 'function') ? resolveMemberQuery(q) : { id: q };
+            if (!resolved?.id) {
+                showSummaryError('未找到匹配的成员（请输入QQ号或昵称）');
+                return;
+            }
+            requestData.qq = resolved.id;
         }
         
         // 尝试使用流式API

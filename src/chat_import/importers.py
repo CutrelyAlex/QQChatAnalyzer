@@ -1,8 +1,8 @@
 """聊天导入层：具体格式解析（JSON / TXT）。
 
 目前支持两类输入：
-- QQChatExporter V4 导出的 JSON（结构化字段丰富）
-- 文本 TXT（非结构化）
+- QQChatExporter V4 导出的 JSON
+- 文本 TXT
 
 这里提供两个加载函数，统一输出归一化 Conversation。
 """
@@ -19,11 +19,11 @@ from .schema import Conversation, Mention, Message, Participant, ReplyReference,
 
 
 # -------------------------
-# 工具：安全裁剪（避免保存过大 raw）
+# 裁剪，避免保存过大 raw
 # -------------------------
 
 
-def _truncate_str(s: Any, max_len: int = 2000) -> Any:
+def _truncate_str(s: Any, max_len: int = 8000) -> Any:
     if not isinstance(s, str):
         return s
     if len(s) <= max_len:
@@ -32,7 +32,7 @@ def _truncate_str(s: Any, max_len: int = 2000) -> Any:
 
 
 def _shallow_trim(obj: Any, *, max_depth: int = 3, max_keys: int = 60, max_list: int = 60) -> Any:
-    """把任意 JSON 对象裁剪为“可用于调试/分析”的小摘要。"""
+    """把任意 JSON 对象裁剪"""
 
     if max_depth <= 0:
         return None
@@ -121,7 +121,7 @@ def _guess_conversation_meta(root: Dict[str, Any], file_path: str) -> Tuple[str,
     if isinstance(raw_type, str) and raw_type.lower() in ("group", "private"):
         ctype = raw_type.lower()
 
-    # conversationId：优先使用文件名派生（避免不同 exporter 字段差异）
+    # conversationId优先使用文件名派生
     conversation_id = f"json:{os.path.basename(file_path)}"
 
     return conversation_id, title, ctype
@@ -189,7 +189,7 @@ def load_conversation_from_json(file_path: str) -> Tuple[Conversation, List[str]
     conversation_id, title, ctype = _guess_conversation_meta(root, file_path)
     conv = Conversation(conversation_id=conversation_id, type=ctype, title=title)
 
-    # 尽量保留 exporter 给的统计/元信息（用于后续对齐校验或 UI 展示）
+    # 保留 exporter 给的统计/元信息
     conv.source_stats = _shallow_trim(
         {
             "statistics": root.get("statistics"),
@@ -302,8 +302,8 @@ def load_conversation_from_json(file_path: str) -> Tuple[Conversation, List[str]
 
         raw_special = content.get("special")
         if raw_special:
-            # special 里可能包含红包/转账/群投票/位置等，类型各异，先统一保存
-            # 若其中显式标识为红包，则把类型标成 redpacket
+            # TODO:special 里可能包含红包/转账/群投票/位置等，类型各异，先统一保存
+            # 红包标成 redpacket
             rtype = "special"
             if isinstance(raw_special, dict):
                 st = raw_special.get("type") or raw_special.get("kind")
@@ -364,12 +364,16 @@ def load_conversation_from_json(file_path: str) -> Tuple[Conversation, List[str]
     conv.participants = list(participants_by_id.values())
     conv.message_count_raw = len(conv.messages)
 
-    # 如果 chatInfo.type 不可信，做兜底：2人 -> private，多人 -> group
-    if conv.type == "unknown":
-        if len(conv.participants) == 2:
-            conv.type = "private"
-        elif len(conv.participants) > 2:
-            conv.type = "group"
+    # chatInfo.type 在不同版本/导出场景下可能不可靠：按参与者数量做兜底推断
+    inferred = None
+    if len(conv.participants) == 2:
+        inferred = "private"
+    elif len(conv.participants) > 2:
+        inferred = "group"
+
+    if inferred and conv.type != inferred:
+        warnings.append(f"chatInfo.type={conv.type} 与参与者数量不一致，已按人数推断为 {inferred}")
+        conv.type = inferred
 
     return conv, warnings
 

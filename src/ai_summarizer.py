@@ -514,6 +514,16 @@ class AISummarizer:
         text_ratio = group_stats.get('text_ratio', 0)
         image_ratio = group_stats.get('image_ratio', 0)
         emoji_ratio = group_stats.get('emoji_ratio', 0)
+
+        # US2：结构化扩展指标（若不存在则为 0/空）
+        system_messages = group_stats.get('system_messages', 0)
+        recalled_messages = group_stats.get('recalled_messages', 0)
+        mention_messages = group_stats.get('mention_messages', 0)
+        reply_messages = group_stats.get('reply_messages', 0)
+        media_messages = group_stats.get('media_messages', 0)
+        media_breakdown = group_stats.get('media_breakdown', {})
+        if not isinstance(media_breakdown, dict):
+            media_breakdown = {}
         
         # 新增的时间统计数据（非常重要！）
         hourly_top_users = group_stats.get('hourly_top_users', {})
@@ -603,6 +613,15 @@ class AISummarizer:
 - **日均消息**: {daily_avg:.1f} 条
 - **最活跃时段**: {peak_str}
 - **消息类型**: 文字 {text_ratio*100:.1f}% | 图片 {image_ratio*100:.1f}% | 表情 {emoji_ratio*100:.1f}%
+
+## 🧩 结构化信号（@/回复/媒体/撤回/系统）
+
+- **系统事件**: {system_messages} 条
+- **撤回消息**: {recalled_messages} 条
+- **含@提及的消息**: {mention_messages} 条
+- **回复消息**: {reply_messages} 条
+- **含媒体/附件的消息**: {media_messages} 条
+- **媒体类型分布**: {json.dumps(media_breakdown, ensure_ascii=False)}
 
 ## 👥 成员构成
 - **核心成员** (TOP 10%): {len(core_members)} 人
