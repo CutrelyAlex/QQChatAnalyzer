@@ -299,10 +299,8 @@ function getPeakTimeLabel(timeDistribution) {
  * 渲染每小时最活跃用户
  */
 function renderHourlyTopUsers(hourlyTopUsers) {
-    const container = document.getElementById('hourly-top-users');
+    const container = getEl('hourly-top-users');
     if (!container) return;
-    
-    console.log('renderHourlyTopUsers data:', hourlyTopUsers);
     
     // 按时段分组：凌晨(0-6)、早上(6-12)、下午(12-18)、晚上(18-24)
     const timeGroups = [
@@ -322,8 +320,8 @@ function renderHourlyTopUsers(hourlyTopUsers) {
             <div class="time-group-items">`;
         
         for (const hour of group.range) {
-            // JSON序列化后整数键变成字符串，需要用字符串访问
-            const userData = hourlyTopUsers[hour] || hourlyTopUsers[hour.toString()];
+            // 注：JSON对象键在JS中本质上是字符串；obj[hour] 会自动转为字符串键。
+            const userData = hourlyTopUsers[hour];
             if (userData) {
                 html += `
                     <div class="hourly-item">
@@ -351,10 +349,8 @@ function renderHourlyTopUsers(hourlyTopUsers) {
  * 渲染每周各日最活跃用户
  */
 function renderWeekdayTopUsers(weekdayTopUsers) {
-    const container = document.getElementById('weekday-top-users');
+    const container = getEl('weekday-top-users');
     if (!container) return;
-    
-    console.log('renderWeekdayTopUsers data:', weekdayTopUsers);
     
     const weekdayEmojis = ['📅', '📆', '🗓️', '📋', '🎉', '🌈', '☀️'];
     const weekdayColors = ['#ff6b6b', '#ffa94d', '#ffd43b', '#69db7c', '#38d9a9', '#74c0fc', '#9775fa'];
@@ -363,8 +359,7 @@ function renderWeekdayTopUsers(weekdayTopUsers) {
     let html = '<div class="weekday-grid">';
     
     for (let i = 0; i < 7; i++) {
-        // JSON序列化后整数键变成字符串，需要用字符串访问
-        const userData = weekdayTopUsers[i] || weekdayTopUsers[i.toString()];
+        const userData = weekdayTopUsers[i];
         const weekdayName = userData?.weekday_name || weekdayNames[i];
         const emoji = weekdayEmojis[i];
         const color = weekdayColors[i];
@@ -393,11 +388,9 @@ function renderWeekdayTopUsers(weekdayTopUsers) {
  * 渲染全年各星期几消息统计（柱状图）
  */
 function renderWeekdayTotals(weekdayTotals) {
-    const container = document.getElementById('weekday-totals');
-    const canvas = document.getElementById('weekday-totals-chart');
+    const container = getEl('weekday-totals');
+    const canvas = getEl('weekday-totals-chart');
     if (!canvas) return;
-    
-    console.log('renderWeekdayTotals data:', weekdayTotals);
     
     const weekdayNames = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
     
@@ -407,8 +400,7 @@ function renderWeekdayTotals(weekdayTotals) {
     const colors = ['#ff6b6b', '#ffa94d', '#ffd43b', '#69db7c', '#38d9a9', '#74c0fc', '#9775fa'];
     
     for (let i = 0; i < 7; i++) {
-        // JSON序列化后整数键变成字符串，需要用字符串访问
-        const dayData = weekdayTotals[i] || weekdayTotals[i.toString()];
+        const dayData = weekdayTotals[i];
         labels.push(dayData?.weekday_name || weekdayNames[i]);
         data.push(dayData?.count || 0);
     }

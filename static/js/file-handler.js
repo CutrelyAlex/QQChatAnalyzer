@@ -25,7 +25,6 @@ async function loadFileList() {
             fileSelect.appendChild(option);
         });
         
-        console.log(`已加载 ${data.count} 个文件`);
     } catch (error) {
         console.error('加载文件列表失败:', error);
         showStatusMessage('error', '加载文件列表失败');
@@ -91,17 +90,21 @@ async function loadFile() {
  */
 async function estimateTokensForFile(filename) {
     try {
+        const payload = { filename: filename };
+        // 这里的 max_tokens 指“输入聊天采样预算”，对应后端的 DataPruner.max_tokens
+        if (typeof appState.aiContextTokens === 'number') {
+            payload.max_tokens = appState.aiContextTokens;
+        }
+
         const response = await fetch(`${API_BASE}/ai/token-estimate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                filename: filename,
-                max_tokens: appState.aiMaxTokens
+                ...payload
             })
         });
         
         if (!response.ok) {
-            console.warn('Token估算失败，跳过');
             return;
         }
         
@@ -110,7 +113,7 @@ async function estimateTokensForFile(filename) {
         if (result.success && result.estimate) {
             // 保存估算信息供AI配置使用
             appState.tokenEstimate = result.estimate;
-            console.log('Token估算完成:', result.estimate);
+            // Token估算完成（日志移除：避免控制台噪音）
         }
     } catch (error) {
         console.error('估算Token时出错:', error);

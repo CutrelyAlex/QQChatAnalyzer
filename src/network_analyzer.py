@@ -1,26 +1,19 @@
-"""
-社交网络分析模块 - 智能分析群聊中的互动关系
-使用多维度算法：时间窗口对话分析 + 内容相似性 + @提及 + 连续回复
+"""社交网络分析模块 - 智能分析群聊中的互动关系。
+
+使用多维度算法：时间窗口对话分析 + 内容相似性 + @提及 + 连续回复。
 """
 
-from collections import defaultdict, Counter
-from datetime import datetime, timedelta
-from typing import Dict, List, Tuple, Any, Set
-import json
-import math
+from collections import defaultdict
+from datetime import datetime
 from itertools import combinations
+from typing import Any, Dict, List, Optional, Tuple
+
 import re
 
-try:
-    from .LineProcess import process_lines_data, LineData
-    from .CutWords import cut_words
-    from .RemoveWords import remove_words
-    from .utils import parse_timestamp
-except ImportError:
-    from LineProcess import process_lines_data, LineData
-    from CutWords import cut_words
-    from RemoveWords import remove_words
-    from utils import parse_timestamp
+from .LineProcess import process_lines_data, LineData
+from .CutWords import cut_words
+from .RemoveWords import remove_words
+from .utils import parse_timestamp
 
 
 class NetworkStats:
@@ -256,7 +249,6 @@ class NetworkAnalyzer:
             return False
 
         # 移除标点符号和表情
-        import re
         clean1 = re.sub(r'[^\w\s]', '', content1)
         clean2 = re.sub(r'[^\w\s]', '', content2)
 
@@ -370,7 +362,6 @@ class NetworkAnalyzer:
     @staticmethod
     def _tokenize_static(text: str) -> List[str]:
         """静态分词方法（用于并行处理）"""
-        import re
         text = re.sub(r'[^\w\s]', '', text)
         return [word for word in text.split() if len(word) > 1]
 
@@ -397,7 +388,6 @@ class NetworkAnalyzer:
 
     def _tokenize(self, text: str) -> List[str]:
         """简单分词"""
-        import re
         # 移除标点和表情
         text = re.sub(r'[^\w\s]', '', text)
         return [word for word in text.split() if len(word) > 1]
@@ -767,6 +757,6 @@ class NetworkAnalyzer:
         
         self.stats.average_path_length = total_path_length / path_count if path_count > 0 else 0
 
-    def _parse_time(self, time_str: str) -> datetime:
+    def _parse_time(self, time_str: str) -> Optional[datetime]:
         """解析时间字符串"""
         return parse_timestamp(time_str)

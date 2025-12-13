@@ -12,7 +12,6 @@ const analysisCacheManager = {
     
     // 初始化缓存管理
     async init() {
-        console.log('[Cache] Initializing cache manager...');
         await this.loadCacheList();
         this.setupGenerateButton();
     },
@@ -24,8 +23,7 @@ const analysisCacheManager = {
             const data = await response.json();
             
             if (data.success) {
-                this.cacheList = data.cache_list;
-                console.log('[Cache] Loaded', this.cacheList.length, 'cached analyses');
+                this.cacheList = data.cache_list;              
                 this.renderCacheUI();
             }
         } catch (error) {
@@ -379,8 +377,6 @@ async function generateSummaryFromCache(cacheId, cacheType) {
             context_budget: appState?.aiContextTokens || 60000
         };
         
-        console.log('[Cache] Generating summary from cache:', requestData);
-        
         // 调用流式API
         if (progressStep) progressStep.textContent = '正在生成AI总结...';
         
@@ -495,7 +491,6 @@ async function generateMergedSummaryFromCache(groupCacheId, networkCacheId) {
             context_budget: appState?.aiContextTokens || 60000
         };
         
-        console.log('[Cache] Generating merged summary:', requestData);
         
         // 调用流式API
         if (progressStep) progressStep.textContent = '正在生成综合社交分析报告...';
@@ -607,7 +602,7 @@ function showSaveButton(type) {
     const btn = document.getElementById(btnId);
     if (btn) {
         btn.style.display = 'inline-block';
-        console.log(`[Cache] Showing save button: ${btnId}`);
+        
     } else {
         console.warn(`[Cache] Save button not found: ${btnId}`);
     }

@@ -8,18 +8,10 @@ from typing import Dict, List, Tuple, Any
 import json
 import re
 
-try:
-    # 当作为包导入时
-    from .LineProcess import process_lines_data, LineData
-    from .CutWords import cut_words
-    from .RemoveWords import remove_words
-    from .utils import parse_timestamp, SYSTEM_QQ_NUMBERS, EMOJI_PATTERN
-except ImportError:
-    # 当直接执行时
-    from LineProcess import process_lines_data, LineData
-    from CutWords import cut_words
-    from RemoveWords import remove_words
-    from utils import parse_timestamp, SYSTEM_QQ_NUMBERS, EMOJI_PATTERN
+from .LineProcess import process_lines_data, LineData
+from .CutWords import cut_words
+from .RemoveWords import remove_words
+from .utils import parse_timestamp, SYSTEM_QQ_NUMBERS, EMOJI_PATTERN
 
 # 预热 jieba
 import jieba

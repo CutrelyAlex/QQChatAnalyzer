@@ -29,11 +29,33 @@ let appState = {
 
 const API_BASE = '/api';
 
+// ============ DOM小工具 ============
+
+function getEl(id) {
+    return document.getElementById(id);
+}
+
+function setText(id, text) {
+    const el = getEl(id);
+    if (el) el.textContent = text;
+    return el;
+}
+
+function setHTML(id, html) {
+    const el = getEl(id);
+    if (el) el.innerHTML = html;
+    return el;
+}
+
+function setDisplay(id, display) {
+    const el = getEl(id);
+    if (el) el.style.display = display;
+    return el;
+}
+
 // ============ 初始化 ============
 
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('应用初始化中...');
-    
     // 初始化UI
     initializeUI();
     loadFileList();
@@ -41,8 +63,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // 绑定事件
     bindEvents();
-    
-    console.log('应用初始化完成');
 });
 
 function initializeUI() {
@@ -125,7 +145,8 @@ async function checkAIStatus() {
         const response = await fetch(`${API_BASE}/ai/status`);
         const data = await response.json();
         
-        const statusBadge = document.getElementById('ai-status');
+        const statusBadge = getEl('ai-status');
+        const aiToggle = getEl('ai-enable-toggle');
         
         if (data.available) {
             statusBadge.textContent = '✅ AI在线';
@@ -135,12 +156,14 @@ async function checkAIStatus() {
             statusBadge.textContent = '❌ AI离线';
             statusBadge.classList.add('disabled');
             statusBadge.classList.remove('enabled');
-            aiToggle.disabled = true;
-            aiToggle.checked = false;
+            if (aiToggle) {
+                aiToggle.disabled = true;
+                aiToggle.checked = false;
+            }
         }
     } catch (error) {
         console.error('检查AI状态失败:', error);
-        document.getElementById('ai-status').textContent = '⚠️ 检查失败';
+        setText('ai-status', '⚠️ 检查失败');
     }
 }
 
@@ -173,6 +196,8 @@ function showStatusMessage(type, message) {
     
     statusDiv.textContent = message;
     statusDiv.className = `status-message ${type}`;
+    // 确保曾被隐藏的状态条可以重新显示
+    statusDiv.style.display = 'block';
     
     if (type !== 'error') {
         setTimeout(() => {
@@ -191,7 +216,7 @@ function formatFileSize(bytes) {
 }
 
 function updateFooterStatus(message) {
-    document.getElementById('footer-status').textContent = message;
+    setText('footer-status', message);
 }
 
 function escapeHtml(text) {

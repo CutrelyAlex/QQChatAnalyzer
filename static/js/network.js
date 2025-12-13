@@ -32,7 +32,6 @@ function renderNetworkGraph(nodes, edges) {
     let filteredEdges = edges;
     
     if (nodes.length > MAX_NODES || edges.length > MAX_EDGES) {
-        console.log(`网络图过大 (${nodes.length} 节点, ${edges.length} 边)，应用过滤...`);
         
         // 按边的权重排序，保留最重要的边
         const sortedEdges = [...edges].sort((a, b) => b.value - a.value);
@@ -66,7 +65,6 @@ function renderNetworkGraph(nodes, edges) {
             );
         }
         
-        console.log(`过滤后: ${filteredNodes.length} 节点, ${filteredEdges.length} 边`);
         showStatusMessage('warning', `⚠️ 网络图已优化: ${nodes.length}→${filteredNodes.length} 节点, ${edges.length}→${filteredEdges.length} 边`);
     }
     
@@ -286,7 +284,6 @@ function renderNetworkGraph(nodes, edges) {
                 easingFunction: 'easeInOutQuad'
             }
         });
-        console.log('网络图布局完成 - 中心-圆环布局');
     });
     
     // 追踪当前选中的节点
@@ -339,7 +336,6 @@ function renderNetworkGraph(nodes, edges) {
             const nodeId = params.nodes[0];
             const node = visNodes.find(n => n.id === nodeId);
             if (node) {
-                console.log('选中节点:', node);
                 const degree = nodeDegrees[nodeId] || 0;
                 const isCore = coreNodes.has(nodeId);
                 
@@ -369,8 +365,6 @@ function renderNetworkGraph(nodes, edges) {
             const edgeId = params.edges[0];
             const edge = visEdges.find(e => e.id === edgeId);
             if (edge) {
-                console.log('选中边:', edge);
-                
                 // 高亮这条边连接的两个节点
                 const fromNode = visNodes.find(n => n.id === edge.from);
                 const toNode = visNodes.find(n => n.id === edge.to);
@@ -409,7 +403,7 @@ function renderNetworkGraph(nodes, edges) {
                 easingFunction: 'easeInOutQuad'
             }
         });
-        console.log('已重置网络图视图');
+
     });
     
     // 存储网络实例供后续使用
@@ -476,8 +470,6 @@ function initNetworkControls() {
         // 实时更新全局限制
         currentNetworkLimits.maxEdges = parseInt(this.value);
     });
-    
-    console.log('网络图控制面板已初始化 - 用户可在分析前设置限制');
 }
 
 // 页面加载时初始化控制面板

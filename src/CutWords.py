@@ -3,14 +3,10 @@ import collections
 import re
 from functools import lru_cache
 
-try:
-    from .RemoveWords import remove_words
-    from .utils import SYSTEM_QQ_NUMBERS, POLLUTED_PHRASES, MENTION_PATTERN, AT_SYMBOL_PATTERN
-except ImportError:
-    from RemoveWords import remove_words
-    from utils import SYSTEM_QQ_NUMBERS, POLLUTED_PHRASES, MENTION_PATTERN, AT_SYMBOL_PATTERN
+from .RemoveWords import remove_words
+from .utils import SYSTEM_QQ_NUMBERS, POLLUTED_PHRASES, MENTION_PATTERN, AT_SYMBOL_PATTERN
 
-# 局部别名（兼容现有代码）
+# 局部别名（避免重复属性查找）
 _MENTION_PATTERN = MENTION_PATTERN
 _AT_PATTERN = AT_SYMBOL_PATTERN
 
@@ -73,8 +69,11 @@ def cut_words(lines_to_process : list, top_words_num: int, nicknames: list = Non
         s_cleaned = remove_polluted_phrases_fast(s_cleaned)
         
         # 分词并过滤
-        words.extend(word for word in jieba.cut(s_cleaned, cut_all=False) 
-                     if len(word) > 1 and word not in remove_words)
+        words.extend(
+            word
+            for word in jieba.cut(s_cleaned, cut_all=False)
+            if len(word) > 1 and word not in remove_words
+        )
     
     word_counts = collections.Counter(words)
     words_top = word_counts.most_common(top_words_num)

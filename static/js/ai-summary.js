@@ -27,7 +27,6 @@ async function generateSummary(type) {
         const selectedCacheId = sessionStorage.getItem('selected_cache_id');
         if (selectedCacheId) {
             requestData.cache_id = selectedCacheId;
-            console.log('使用缓存ID:', selectedCacheId);
         }
         
         // 如果是个人总结，需要QQ号

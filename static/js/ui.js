@@ -206,16 +206,9 @@ function drawMemberRankingChart(memberMessageCount) {
     
     if (charts.memberRanking) charts.memberRanking.destroy();
     
-    // 取前10名成员 - 支持新格式 {qq: {name, count}}
+    // 取前10名成员 - 统一使用 {qq: {name, count}} 格式
     const sorted = Object.entries(memberMessageCount)
-        .map(([qq, info]) => {
-            // 兼容新旧格式
-            if (typeof info === 'object' && info !== null) {
-                return { qq, name: info.name || qq, count: info.count || 0 };
-            } else {
-                return { qq, name: qq, count: info || 0 };
-            }
-        })
+        .map(([qq, info]) => ({ qq, name: info?.name || qq, count: info?.count || 0 }))
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
     

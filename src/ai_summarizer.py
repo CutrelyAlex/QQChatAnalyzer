@@ -10,10 +10,7 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 from collections import defaultdict
 
-try:
-    from .prompts import get_system_prompt
-except ImportError:
-    from prompts import get_system_prompt
+from .prompts import get_system_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +170,13 @@ class AISummarizer:
         
         # 可用于聊天记录的Token预算
         available_budget = self.context_budget - self.PROMPT_RESERVE
+
+        # 预算不足时直接返回空样本
+        if available_budget <= 0:
+            logger.warning(
+                f"Context budget too small (context_budget={self.context_budget}, reserve={self.PROMPT_RESERVE}); returning empty chat sample"
+            )
+            return ""
         
         # 如果指定了target_qq，先过滤消息
         if target_qq:
@@ -209,7 +213,7 @@ class AISummarizer:
             return self._format_messages(messages)
         
         # 需要稀疏采样
-        retention_ratio = available_budget / total_tokens
+        retention_ratio = available_budget / total_tokens if total_tokens > 0 else 0
         logger.info(f"Need to prune, retention ratio: {retention_ratio:.2%}")
         
         # 获取所有日期并排序
@@ -252,6 +256,24 @@ class AISummarizer:
                         sampled_messages.append(day_messages[idx])
         
         logger.info(f"Sampled {len(sampled_messages)} messages from {len(messages)} total")
+
+        # 兜底：如果采样后仍然超过预算，再做一次全局均匀采样（保证至少留 1 条）
+        sampled_tokens = sum(
+            self._estimate_message_tokens(
+                f"[{m.get('time', '')}] {m.get('sender', '')}: {m.get('content', '')}"
+            )
+            for m in sampled_messages
+        )
+
+        if sampled_messages and sampled_tokens > available_budget:
+            keep_ratio = available_budget / sampled_tokens if sampled_tokens > 0 else 0
+            keep_count = max(1, int(len(sampled_messages) * keep_ratio))
+            step = len(sampled_messages) / keep_count if keep_count > 0 else len(sampled_messages)
+            indices = [int(i * step) for i in range(keep_count)]
+            sampled_messages = [sampled_messages[i] for i in indices if i < len(sampled_messages)]
+            logger.info(
+                f"Post-prune downsample applied: kept {len(sampled_messages)} messages to better fit budget"
+            )
         
         return self._format_messages(sampled_messages)
     

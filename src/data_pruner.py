@@ -13,6 +13,8 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Tuple, Any, Optional
 import math
 
+from .LineProcess import process_lines_data
+
 
 class DataPruner:
     """
@@ -94,13 +96,27 @@ class DataPruner:
             self.total_messages += 1
         
         self.total_tokens_estimate = self._estimate_total_tokens()
+
+    def _format_message_for_estimate(self, msg: Dict[str, Any]) -> str:
+        """构造与 format_messages_for_ai 一致的文本，用于更贴近真实上下文的Token估算。"""
+        parts: List[str] = []
+        time_str = msg.get('time', '')
+        if time_str:
+            parts.append(f"[{time_str}]")
+
+        sender = msg.get('sender') or msg.get('qq')
+        if sender:
+            parts.append(f"{sender}:")
+
+        parts.append(msg.get('content', ''))
+        return ' '.join(parts)
     
     def _estimate_total_tokens(self) -> int:
         """估算所有消息的总token数"""
         total = 0
         for date_messages in self.messages_by_date.values():
             for msg in date_messages:
-                total += self._estimate_message_tokens(msg.get('content', ''))
+                total += self._estimate_message_tokens(self._format_message_for_estimate(msg))
         return total
     
     def _estimate_message_tokens(self, content: str) -> int:
@@ -118,7 +134,7 @@ class DataPruner:
         cn_chars = 0
         en_chars = 0
         
-        for char in content:
+        for char in str(content):
             if '\u4e00' <= char <= '\u9fff':  # 中文
                 cn_chars += 1
             else:
@@ -156,7 +172,8 @@ class DataPruner:
             'avg_tokens_per_day': round(avg_per_day, 1),
             'avg_tokens_per_message': round(avg_per_msg, 1),
             'needs_pruning': self.total_tokens_estimate > self.max_tokens,
-            'overflow_ratio': round(self.total_tokens_estimate / self.max_tokens, 2) if self.max_tokens > 0 else 0
+            # 超出比例：0 表示未超出；0.25 表示超出 25%
+            'overflow_ratio': round(max(0.0, (self.total_tokens_estimate - self.max_tokens) / self.max_tokens), 2) if self.max_tokens > 0 else 0
         }
     
     def calculate_pruning_strategy(self) -> Dict[str, Any]:
@@ -240,34 +257,56 @@ class DataPruner:
         # 获取所有日期并排序
         sorted_dates = sorted(self.messages_by_date.keys())
         total_days = len(sorted_dates)
-        
-        # 计算保留比例
-        retention_ratio = self.max_tokens / self.total_tokens_estimate
-        keep_days = max(1, int(total_days * retention_ratio))
-        
-        # 选择要保留的日期
-        if strategy == 'recent':
-            # 保留最近的日期
-            selected_dates = sorted_dates[-keep_days:]
-        elif strategy == 'important':
-            # 保留消息最多的日期
-            date_counts = [(d, len(self.messages_by_date[d])) for d in sorted_dates]
-            date_counts.sort(key=lambda x: x[1], reverse=True)
-            selected_dates = sorted([d for d, _ in date_counts[:keep_days]])
-        else:  # uniform (默认)
-            # 均匀采样
-            step = total_days / keep_days
-            selected_indices = [int(i * step) for i in range(keep_days)]
-            selected_dates = [sorted_dates[i] for i in selected_indices if i < total_days]
-        
+
+        # 预计算每一天的 token（使用与AI一致的格式，避免低估）
+        day_tokens: Dict[str, int] = {}
+        for d in sorted_dates:
+            day_tokens[d] = sum(
+                self._estimate_message_tokens(self._format_message_for_estimate(m))
+                for m in self.messages_by_date[d]
+            )
+
+        # 先按比例估算要保留的天数，然后在“保证不超预算”的前提下做回退
+        retention_ratio_tokens = self.max_tokens / self.total_tokens_estimate
+        keep_days = max(1, int(total_days * retention_ratio_tokens))
+
+        def select_dates(k: int) -> List[str]:
+            if k <= 0:
+                return []
+            if strategy == 'recent':
+                return sorted_dates[-k:]
+            if strategy == 'important':
+                # 活跃度：先按当天 token（更贴近上下文），再按消息数兜底
+                ranked = sorted(
+                    sorted_dates,
+                    key=lambda d: (day_tokens.get(d, 0), len(self.messages_by_date[d])),
+                    reverse=True
+                )
+                return sorted(ranked[:k])
+            # uniform (默认)
+            if k >= total_days:
+                return list(sorted_dates)
+            step = total_days / k
+            indices = [int(i * step) for i in range(k)]
+            return [sorted_dates[i] for i in indices if i < total_days]
+
+        selected_dates = select_dates(keep_days)
+
+        # 回退：如果选中的天数 token 仍超出预算，减少 keep_days
+        selected_days_tokens = sum(day_tokens.get(d, 0) for d in selected_dates)
+        while selected_dates and selected_days_tokens > self.max_tokens and keep_days > 1:
+            keep_days -= 1
+            selected_dates = select_dates(keep_days)
+            selected_days_tokens = sum(day_tokens.get(d, 0) for d in selected_dates)
+
         # 收集选中日期的消息
-        pruned_messages = []
-        for date in selected_dates:
-            pruned_messages.extend(self.messages_by_date[date])
-        
-        # 计算修剪后的token数
+        pruned_messages: List[Dict[str, Any]] = []
+        for d in selected_dates:
+            pruned_messages.extend(self.messages_by_date[d])
+
+        # 最终 token（仍然是估算值）
         final_tokens = sum(
-            self._estimate_message_tokens(msg.get('content', ''))
+            self._estimate_message_tokens(self._format_message_for_estimate(msg))
             for msg in pruned_messages
         )
         
@@ -281,7 +320,9 @@ class DataPruner:
             'original_days': total_days,
             'kept_days': len(selected_dates),
             'removed_days': total_days - len(selected_dates),
-            'retention_ratio': round(len(pruned_messages) / self.total_messages, 3) if self.total_messages > 0 else 0
+            'retention_ratio': round(len(pruned_messages) / self.total_messages, 3) if self.total_messages > 0 else 0,
+            'retention_ratio_tokens': round(final_tokens / self.total_tokens_estimate, 3) if self.total_tokens_estimate > 0 else 0,
+            'fits_budget': final_tokens <= self.max_tokens
         }
     
     def get_date_distribution(self) -> List[Dict[str, Any]]:
@@ -295,7 +336,7 @@ class DataPruner:
         for date in sorted(self.messages_by_date.keys()):
             messages = self.messages_by_date[date]
             token_est = sum(
-                self._estimate_message_tokens(msg.get('content', ''))
+                self._estimate_message_tokens(self._format_message_for_estimate(msg))
                 for msg in messages
             )
             distribution.append({
@@ -345,11 +386,6 @@ def estimate_file_tokens(filepath: str, max_tokens: int = 100000) -> Dict[str, A
     Returns:
         Token估算结果
     """
-    try:
-        from .LineProcess import process_lines_data
-    except ImportError:
-        from LineProcess import process_lines_data
-    
     lines, lines_data, _ = process_lines_data(filepath, mode='all')
     
     pruner = DataPruner(max_tokens)
@@ -371,11 +407,6 @@ def prune_file_for_ai(filepath: str, max_tokens: int = 100000,
     Returns:
         (formatted_text, pruning_info)
     """
-    try:
-        from .LineProcess import process_lines_data
-    except ImportError:
-        from LineProcess import process_lines_data
-    
     lines, lines_data, _ = process_lines_data(filepath, mode='all')
     
     pruner = DataPruner(max_tokens)

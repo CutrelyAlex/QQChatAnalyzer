@@ -6,27 +6,23 @@ import re
 from datetime import datetime
 from collections import defaultdict, Counter
 
-try:
-    from .CutWords import cut_words
-    from .RemoveWords import remove_words
-    from .LineProcess import process_lines_data, LineData
-    from .utils import (
-        TIME_LINE_PATTERN, MENTION_PATTERN, HTTP_PATTERN,
-        SYSTEM_QQ_NUMBERS, parse_hour_from_time
-    )
-except ImportError:
-    from CutWords import cut_words
-    from RemoveWords import remove_words
-    from LineProcess import process_lines_data, LineData
-    from utils import (
-        TIME_LINE_PATTERN, MENTION_PATTERN, HTTP_PATTERN,
-        SYSTEM_QQ_NUMBERS, parse_hour_from_time
-    )
+from .CutWords import cut_words
+from .RemoveWords import remove_words
+from .LineProcess import process_lines_data, LineData
+from .utils import (
+    TIME_LINE_PATTERN,
+    MENTION_PATTERN,
+    HTTP_PATTERN,
+    SYSTEM_QQ_NUMBERS,
+    parse_hour_from_time,
+    clean_message_content,
+)
 
-# 局部别名（兼容现有代码）
+# 局部别名（避免重复属性查找/保持现有代码结构）
 _TIME_PATTERN = TIME_LINE_PATTERN
 _MENTION_PATTERN = MENTION_PATTERN
 _HTTP_PATTERN = HTTP_PATTERN
+_AT_NAME_PATTERN = re.compile(r'@(\S+)')
 
 
 class PersonalStats:
@@ -260,7 +256,9 @@ class PersonalAnalyzer:
             stats.time_distribution['night_late'] += 1
         
         # 内容特征
-        clean_content = content.replace('[图片]', '').replace('[表情]', '').replace('撤回了一条消息', '')
+        # 统一清理逻辑：复用 utils.clean_message_content()
+        # 说明：content 来源于 lines[i+1].strip()，不包含原始换行符，因此与旧 replace 逻辑结果一致。
+        clean_content = clean_message_content(content)
         stats.avg_message_length += len(clean_content)
         stats.image_count += content.count('[图片]')
         stats.emoji_count += content.count('[表情]')
@@ -322,7 +320,7 @@ class PersonalAnalyzer:
         for msg in all_messages:
             if msg['qq'] == stats.qq:
                 # 查找此消息中的所有@
-                mentions = re.findall(r'@(\S+)', msg['content'])
+                mentions = _AT_NAME_PATTERN.findall(msg['content'])
                 for mention_name in mentions:
                     # 尝试将用户名映射到QQ
                     if name_to_qq and mention_name in name_to_qq:
@@ -337,7 +335,7 @@ class PersonalAnalyzer:
         # 计算此用户被@的次数
         being_at_count = 0
         for msg in all_messages:
-            mentions = re.findall(r'@(\S+)', msg['content'])
+            mentions = _AT_NAME_PATTERN.findall(msg['content'])
             for mention_name in mentions:
                 # 检查是否@了这个用户
                 if name_to_qq and mention_name in name_to_qq:
@@ -355,7 +353,7 @@ class PersonalAnalyzer:
             if msg['qq'] == stats.qq:
                 content = msg['content']
                 # 清理内容
-                clean = content.replace('[图片]', '').replace('[表情]', '').replace('撤回了一条消息', '').strip()
+                clean = clean_message_content(content).strip()
                 if clean and len(clean) > 1:
                     user_messages.append(clean)
         

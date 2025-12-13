@@ -2,16 +2,14 @@ import re
 from datetime import datetime
 from typing import List, Dict, Tuple
 
-try:
-    from .utils import (
-        parse_timestamp, SYSTEM_QQ_NUMBERS, TIME_LINE_PATTERN,
-        clean_message_content, has_link, extract_qq_mentions
-    )
-except ImportError:
-    from utils import (
-        parse_timestamp, SYSTEM_QQ_NUMBERS, TIME_LINE_PATTERN,
-        clean_message_content, has_link, extract_qq_mentions
-    )
+from .utils import (
+    parse_timestamp,
+    SYSTEM_QQ_NUMBERS,
+    TIME_LINE_PATTERN,
+    clean_message_content,
+    has_link,
+    extract_qq_mentions,
+)
 
 
 class LineData:

@@ -17,13 +17,16 @@ load_dotenv()
 from flask import Flask, render_template, request, jsonify, send_file
 from flask_cors import CORS
 
-# 添加 src 目录到系统路径
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+# `src/` is a package; import analyzers via package path.
+from src.config import Config
+from src.personal_analyzer import PersonalAnalyzer
+from src.group_analyzer import GroupAnalyzer
+from src.network_analyzer import NetworkAnalyzer
 
-from config import Config
-from personal_analyzer import PersonalAnalyzer
-from group_analyzer import GroupAnalyzer
-from network_analyzer import NetworkAnalyzer
+# 热词示例缓存
+_CHAT_EXAMPLES_CACHE = {
+    # filename: {"mtime": float, "records": [ {timestamp,sender,qq,clean_text}, ... ]}
+}
 
 # 配置日志
 logging.basicConfig(
@@ -424,8 +427,8 @@ def token_estimate():
             return jsonify({'success': False, 'error': '文件不存在'}), 404
         
         # 使用 DataPruner 进行 Token 估算
-        from data_pruner import DataPruner
-        from LineProcess import process_lines_data
+        from src.data_pruner import DataPruner
+        from src.LineProcess import process_lines_data
         
         lines, lines_data, _ = process_lines_data(str(filepath), mode='all')
         
@@ -649,7 +652,7 @@ def generate_summary():
         logger.info(f"Generating {summary_type} AI summary for {filename} (max_tokens={max_tokens}, context_budget={context_budget})")
         
         # 导入 AI Summarizer
-        from ai_summarizer import AISummarizer
+        from src.ai_summarizer import AISummarizer
         
         # 使用环境变量配置，传入用户指定的context_budget
         summarizer = AISummarizer(
@@ -860,7 +863,7 @@ def generate_summary_stream():
         if not Config.OPENAI_API_KEY:
             return jsonify({'success': False, 'error': 'AI服务未配置'}), 503
         
-        from ai_summarizer import AISummarizer
+        from src.ai_summarizer import AISummarizer
         summarizer = AISummarizer(model=Config.OPENAI_MODEL, max_tokens=max_tokens, api_key=Config.OPENAI_API_KEY, base_url=Config.OPENAI_API_BASE, context_budget=context_budget, timeout=int(Config.OPENAI_REQUEST_TIMEOUT))
         
         if not summarizer.is_available():
@@ -1170,23 +1173,40 @@ def get_chat_examples():
         if not filepath.exists():
             return jsonify({'success': False, 'error': '文件不存在'}), 404
         
-        from LineProcess import process_lines_data
-        all_lines, all_lines_data, _ = process_lines_data(filepath, mode='all')
+        from src.LineProcess import process_lines_data
+
+        # 优先走缓存（按文件 mtime 自动失效）
+        file_mtime = filepath.stat().st_mtime
+        cached = _CHAT_EXAMPLES_CACHE.get(filename)
+        if cached and cached.get('mtime') == file_mtime:
+            records = cached.get('records', [])
+        else:
+            _, all_lines_data, _ = process_lines_data(str(filepath), mode='all')
+            records = [
+                {
+                    'timestamp': ld.timepat,
+                    'sender': ld.sender,
+                    'qq': ld.qq,
+                    'clean_text': ld.clean_text or ''
+                }
+                for ld in all_lines_data
+            ]
+            _CHAT_EXAMPLES_CACHE[filename] = {'mtime': file_mtime, 'records': records}
         
         # 过滤包含热词的消息
         examples = []
-        for line_data in all_lines_data:
+        for rec in records:
             # 如果指定了QQ，则只查找该QQ的消息
-            if qq and line_data.qq != qq:
+            if qq and rec['qq'] != qq:
                 continue
             
             # 在清理后的文本中查找热词
-            if word in line_data.clean_text:
+            if word in rec['clean_text']:
                 examples.append({
-                    'timestamp': line_data.timepat,
-                    'sender': line_data.sender,
-                    'qq': line_data.qq,
-                    'content': line_data.clean_text  # 显示清理后的文本
+                    'timestamp': rec['timestamp'],
+                    'sender': rec['sender'],
+                    'qq': rec['qq'],
+                    'content': rec['clean_text']  # 显示清理后的文本
                 })
             
             # 最多获取4条示例

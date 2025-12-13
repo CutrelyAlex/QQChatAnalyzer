@@ -202,12 +202,21 @@ function loadWordExamplesAsync(word, cell, containerId) {
  */
 async function fetchWordExamples(word, containerId) {
     const isPersonal = containerId === 'personal-hot-words';
+
+    if (!appState.currentFile) {
+        return [];
+    }
+
+    // 避免对明显无意义的热词发起请求（例如纯数字）
+    if (/^\d+$/.test(word)) {
+        return [];
+    }
     
-    let url = `${API_BASE}/chat-examples?word=${encodeURIComponent(word)}&file=${appState.currentFile}`;
+    let url = `${API_BASE}/chat-examples?word=${encodeURIComponent(word)}&file=${encodeURIComponent(appState.currentFile)}`;
     if (isPersonal) {
         const qq = document.getElementById('qq-input')?.value;
         if (qq) {
-            url += `&qq=${qq}`;
+            url += `&qq=${encodeURIComponent(qq)}`;
         }
     }
     
