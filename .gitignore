@@ -12,3 +12,30 @@ exports/.analysis_cache/89f48c0c.pkl
 test_e2e_flow.py
 /static/js/.idea
 /tests
+
+# --- Python common ---
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Packaging/build
+build/
+dist/
+*.egg-info/
+
+# Env files
+.env*
+
+# Caches
+exports/.analysis_cache/
