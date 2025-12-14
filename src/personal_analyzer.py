@@ -261,8 +261,6 @@ class PersonalAnalyzer:
             if not qq or qq in SYSTEM_QQ_NUMBERS:
                 continue
 
-            # 系统事件通常不计入个人统计，但“撤回”在导出里往往以系统灰条出现，
-            # 如果这里直接过滤，会导致个人撤回数永远为 0。
             content = str(m.get('content', '') or '')
             is_system = bool(m.get('is_system'))
             is_recalled = bool(m.get('is_recalled')) or ('撤回了一条消息' in content)
@@ -300,12 +298,7 @@ class PersonalAnalyzer:
 
         return stats_dict
     
-    
-    
-    
-    
-    
-    
+
     def _process_message(self, msg, stats_dict, name_to_qq=None):
         """处理单条消息
         

@@ -28,8 +28,6 @@ class Config:
     MAX_MEMBERS = int(os.getenv('MAX_MEMBERS', 5000))
     MAX_RECORDS_PER_LOAD = int(os.getenv('MAX_RECORDS_PER_LOAD', 1000000))
 
-    # JSON 导入时间语义：QQChatExporter 的 timestamp 末尾常带 "Z"，但部分导出里它实际是“本地时间”。
-    # 默认把 "Z" 当作本地时间标记处理；如需严格按 UTC 解释，设置 CIYUN_JSON_ASSUME_UTC=1。
     JSON_TIMESTAMP_ASSUME_UTC = os.getenv('CIYUN_JSON_ASSUME_UTC', '0').strip().lower() in (
         '1', 'true', 'yes', 'y', 'on'
     )
@@ -40,6 +38,10 @@ class Config:
     DEFAULT_RETENTION_RATIO = float(os.getenv('DEFAULT_RETENTION_RATIO', 0.8))
     DEFAULT_CONTEXT_BUDGET = int(os.getenv('DEFAULT_CONTEXT_BUDGET', 60000))
     DEFAULT_OUTPUT_TOKENS = int(os.getenv('DEFAULT_OUTPUT_TOKENS', 4000))
+
+    # 文本生成参数
+    DEFAULT_TEMPERATURE = float(os.getenv('OPENAI_TEMPERATURE', 0.8))
+    DEFAULT_TOP_P = float(os.getenv('OPENAI_TOP_P', 0.9))
     
     @classmethod
     def validate_config(cls):
@@ -59,11 +61,17 @@ class Config:
         if cls.MAX_FILE_SIZE_MB < 1:
             issues.append("❌ MAX_FILE_SIZE_MB 配置无效")
         
-        if cls.DEFAULT_MAX_TOKENS < 100:
+        if cls.DEFAULT_MAX_TOKENS < 5000:
             issues.append("⚠️  DEFAULT_MAX_TOKENS 过小，可能影响AI总结效果")
         
         if cls.DEFAULT_RETENTION_RATIO <= 0 or cls.DEFAULT_RETENTION_RATIO > 1:
             issues.append("❌ DEFAULT_RETENTION_RATIO 必须在 0-1 之间")
+
+        if cls.DEFAULT_TEMPERATURE < 0 or cls.DEFAULT_TEMPERATURE > 2:
+            issues.append("❌ OPENAI_TEMPERATURE 必须在 0-2 之间")
+
+        if cls.DEFAULT_TOP_P < 0 or cls.DEFAULT_TOP_P > 1:
+            issues.append("❌ OPENAI_TOP_P 必须在 0-1 之间")
         
         return issues
     
@@ -82,6 +90,7 @@ class Config:
         print(f"📊 Token限制: {cls.DEFAULT_MAX_TOKENS} (预留: {cls.RESERVED_TOKENS})")
         print(f"💬 Context预算: {cls.DEFAULT_CONTEXT_BUDGET} tokens")
         print(f"📝 输出长度: {cls.DEFAULT_OUTPUT_TOKENS} tokens")
+        print(f"🎛️  采样参数: temperature={cls.DEFAULT_TEMPERATURE}, top_p={cls.DEFAULT_TOP_P}")
         
         # 验证并显示问题
         issues = cls.validate_config()

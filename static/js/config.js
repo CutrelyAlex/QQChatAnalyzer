@@ -47,7 +47,6 @@ async function fetchEnvDefaults() {
         }
     } catch (error) {
         console.warn('Failed to fetch env defaults:', error);
-        // 使用硬编码的默认值作为后备
     }
 }
 

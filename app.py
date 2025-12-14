@@ -798,6 +798,31 @@ def generate_summary():
         max_tokens = data.get('max_tokens', Config.DEFAULT_OUTPUT_TOKENS)
         # context_budget 控制输入聊天记录的Token预算，用于稀疏采样
         context_budget = data.get('context_budget', Config.DEFAULT_CONTEXT_BUDGET)
+
+        # 前端传入 temperature / top_p
+        def _clamp_float(value, *, default: float, min_value: float, max_value: float) -> float:
+            try:
+                v = float(value)
+            except Exception:
+                return float(default)
+            if v < min_value:
+                return float(min_value)
+            if v > max_value:
+                return float(max_value)
+            return float(v)
+
+        temperature = _clamp_float(
+            data.get('temperature', Config.DEFAULT_TEMPERATURE),
+            default=Config.DEFAULT_TEMPERATURE,
+            min_value=0.0,
+            max_value=2.0,
+        )
+        top_p = _clamp_float(
+            data.get('top_p', data.get('topP', Config.DEFAULT_TOP_P)),
+            default=Config.DEFAULT_TOP_P,
+            min_value=0.0,
+            max_value=1.0,
+        )
         
         # 检查是否使用缓存数据
         analysis_data = None
@@ -847,7 +872,9 @@ def generate_summary():
             api_key=Config.OPENAI_API_KEY,
             base_url=Config.OPENAI_API_BASE,
             context_budget=context_budget,
-            timeout=int(Config.OPENAI_REQUEST_TIMEOUT)
+            timeout=int(Config.OPENAI_REQUEST_TIMEOUT),
+            temperature=temperature,
+            top_p=top_p,
         )
         
         if not summarizer.is_available():
@@ -924,6 +951,8 @@ def generate_summary():
             'summary': result.get('summary', ''),
             'tokens_used': result.get('tokens_used', 0),
             'model': result.get('model', ''),
+            'temperature': result.get('temperature', temperature),
+            'top_p': result.get('top_p', top_p),
             'error': result.get('error', '')
         })
         
@@ -947,6 +976,30 @@ def generate_summary_stream():
         filename = data.get('filename')
         max_tokens = data.get('max_tokens', Config.DEFAULT_OUTPUT_TOKENS)
         context_budget = data.get('context_budget', Config.DEFAULT_CONTEXT_BUDGET)
+
+        def _clamp_float(value, *, default: float, min_value: float, max_value: float) -> float:
+            try:
+                v = float(value)
+            except Exception:
+                return float(default)
+            if v < min_value:
+                return float(min_value)
+            if v > max_value:
+                return float(max_value)
+            return float(v)
+
+        temperature = _clamp_float(
+            data.get('temperature', Config.DEFAULT_TEMPERATURE),
+            default=Config.DEFAULT_TEMPERATURE,
+            min_value=0.0,
+            max_value=2.0,
+        )
+        top_p = _clamp_float(
+            data.get('top_p', data.get('topP', Config.DEFAULT_TOP_P)),
+            default=Config.DEFAULT_TOP_P,
+            min_value=0.0,
+            max_value=1.0,
+        )
         
         # 检查是否使用缓存数据
         cached_data = None
@@ -1013,7 +1066,16 @@ def generate_summary_stream():
             return jsonify({'success': False, 'error': 'AI服务未配置'}), 503
         
         from src.ai_summarizer import AISummarizer
-        summarizer = AISummarizer(model=Config.OPENAI_MODEL, max_tokens=max_tokens, api_key=Config.OPENAI_API_KEY, base_url=Config.OPENAI_API_BASE, context_budget=context_budget, timeout=int(Config.OPENAI_REQUEST_TIMEOUT))
+        summarizer = AISummarizer(
+            model=Config.OPENAI_MODEL,
+            max_tokens=max_tokens,
+            api_key=Config.OPENAI_API_KEY,
+            base_url=Config.OPENAI_API_BASE,
+            context_budget=context_budget,
+            timeout=int(Config.OPENAI_REQUEST_TIMEOUT),
+            temperature=temperature,
+            top_p=top_p,
+        )
         
         if not summarizer.is_available():
             return jsonify({'success': False, 'error': 'AI服务未配置'}), 503
@@ -1095,7 +1157,8 @@ def generate_summary_stream():
                         {"role": "user", "content": prompt}
                     ],
                     max_tokens=max_tokens,
-                    temperature=0.8,
+                    temperature=temperature,
+                    top_p=top_p,
                     stream=True
                 )
                 

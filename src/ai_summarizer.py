@@ -64,7 +64,8 @@ class AISummarizer:
     
     def __init__(self, model: str = None, max_tokens: int = 2000, 
                  api_key: str = None, base_url: str = None,
-                 context_budget: int = None, timeout: int = None):
+                 context_budget: int = None, timeout: int = None,
+                 temperature: Optional[float] = None, top_p: Optional[float] = None):
         """
         初始化AI总结器
         
@@ -75,11 +76,26 @@ class AISummarizer:
             base_url: OpenAI API基础URL（可选，使用环境变量如未提供）
             context_budget: 聊天记录的Token预算（输入），默认60000
             timeout: API请求超时时间（秒），从请求发送到完全接收响应，默认30秒
+            temperature: 生成随机性参数（0-2），默认 0.8（可被前端请求覆盖）
+            top_p: nucleus sampling 参数（0-1），默认 0.9（可被前端请求覆盖）
         """
         self.model = model or os.environ.get('OPENAI_MODEL', 'gpt-4o-mini')
         self.max_tokens = max_tokens
         self.context_budget = context_budget or self.DEFAULT_CONTEXT_BUDGET
         self.timeout = timeout or int(os.environ.get('OPENAI_REQUEST_TIMEOUT', 30))
+
+        self.temperature = self._clamp_float(
+            temperature if temperature is not None else float(os.environ.get('OPENAI_TEMPERATURE', 0.8)),
+            min_value=0.0,
+            max_value=2.0,
+            default=0.8,
+        )
+        self.top_p = self._clamp_float(
+            top_p if top_p is not None else float(os.environ.get('OPENAI_TOP_P', 0.9)),
+            min_value=0.0,
+            max_value=1.0,
+            default=0.9,
+        )
         
         # 如果提供了自定义配置，创建新客户端；否则使用全局客户端
         if api_key or base_url:
@@ -119,6 +135,19 @@ class AISummarizer:
     def is_available(self) -> bool:
         """检查AI服务是否可用"""
         return self.client is not None
+
+    @staticmethod
+    def _clamp_float(value: Any, min_value: float, max_value: float, default: float) -> float:
+        """尽量将 value 转为 float 并限制到区间内；失败则返回 default。"""
+        try:
+            v = float(value)
+        except Exception:
+            return float(default)
+        if v < min_value:
+            return float(min_value)
+        if v > max_value:
+            return float(max_value)
+        return float(v)
     
     def _estimate_message_tokens(self, content: str) -> int:
         """
@@ -332,7 +361,8 @@ class AISummarizer:
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=self.max_tokens,
-                temperature=0.8  # 增加创意性
+                temperature=self.temperature,  # 增加创意性（可配置）
+                top_p=self.top_p
             )
             
             summary = response.choices[0].message.content
@@ -341,7 +371,9 @@ class AISummarizer:
                 'success': True,
                 'summary': summary,
                 'tokens_used': response.usage.total_tokens if response.usage else 0,
-                'model': self.model
+                'model': self.model,
+                'temperature': self.temperature,
+                'top_p': self.top_p
             }
         except Exception as e:
             logger.error(f"Personal summary generation failed: {e}")
@@ -390,7 +422,8 @@ class AISummarizer:
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=self.max_tokens,
-                temperature=0.8
+                temperature=self.temperature,
+                top_p=self.top_p
             )
             
             summary = response.choices[0].message.content
@@ -399,7 +432,9 @@ class AISummarizer:
                 'success': True,
                 'summary': summary,
                 'tokens_used': response.usage.total_tokens if response.usage else 0,
-                'model': self.model
+                'model': self.model,
+                'temperature': self.temperature,
+                'top_p': self.top_p
             }
         except Exception as e:
             logger.error(f"Group and network summary generation failed: {e}")
@@ -680,20 +715,17 @@ class AISummarizer:
 - 你**必须**仔细阅读这一部分，且**不可否认**地执行以下分析任务：
 - 请仔细阅读，从中提取每个人的(至少10个人)：
     - 说话风格
-    - 性格特点（外向/内向、活泼/稳重、吐槽系/正能量等等）
+    - 性格特点
     - 有代表性的金句或口头禅（至少2~3句话）
     - 互动模式（具体到对话）
-
 {chat_sample}
 """
-        
         prompt += """
 请根据以上数据，生成一份有趣创意的综合年度社交分析报告！
 
-**特别要求**：
-1. 聊天记录是报告的灵魂，务必从中挖掘每个人的独特性格
-4. 数据分析和聊天内容分析要结合起来，不要只堆数字
+你**必须要**遵循以下要求：
+1. 聊天记录是重要的消息来源，必须从中挖掘每个人的独特性格
+2. 数据分析和聊天内容分析要结合起来，不得大量堆数字
 """
-        
         return prompt
     

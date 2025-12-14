@@ -344,6 +344,21 @@ const analysisCacheManager = {
 
 // ============ 从缓存生成AI总结 ============
 
+function getAiGenerationParamsForCache() {
+    // 与 config.js 的 aiConfig 保持一致；analysis-cache.js 先加载，但调用时 window.aiConfig 应已存在
+    const cfg = (typeof window !== 'undefined' && window.aiConfig) ? window.aiConfig : null;
+    const temperature = (cfg && typeof cfg.temperature === 'number')
+        ? cfg.temperature
+        : parseFloat(localStorage.getItem('ai_temperature') || '0.7');
+    const topP = (cfg && typeof cfg.topP === 'number')
+        ? cfg.topP
+        : parseFloat(localStorage.getItem('ai_top_p') || '0.9');
+    return {
+        temperature: Number.isFinite(temperature) ? temperature : 0.7,
+        top_p: Number.isFinite(topP) ? topP : 0.9
+    };
+}
+
 async function generateSummaryFromCache(cacheId, cacheType) {
     if (!cacheId) {
         showConfigStatus('❌ 未选择缓存数据', 'error');
@@ -374,7 +389,8 @@ async function generateSummaryFromCache(cacheId, cacheType) {
             type: cacheType,
             cache_id: cacheId,
             max_tokens: appState?.aiOutputTokens || 4000,
-            context_budget: appState?.aiContextTokens || 60000
+            context_budget: appState?.aiContextTokens || 60000,
+            ...getAiGenerationParamsForCache()
         };
         
         // 调用流式API
@@ -488,7 +504,8 @@ async function generateMergedSummaryFromCache(groupCacheId, networkCacheId) {
             group_cache_id: groupCacheId,
             network_cache_id: networkCacheId,
             max_tokens: appState?.aiOutputTokens || 4000,
-            context_budget: appState?.aiContextTokens || 60000
+            context_budget: appState?.aiContextTokens || 60000,
+            ...getAiGenerationParamsForCache()
         };
         
         

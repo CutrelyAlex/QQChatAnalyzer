@@ -5,6 +5,22 @@
 
 // ============ AI总结 ============
 
+function getAiGenerationParams() {
+    // 统一从 AI 配置页（window.aiConfig）读取；若未初始化则回退 localStorage
+    // 后端接受 temperature (0-2) 与 top_p (0-1)
+    const cfg = (typeof window !== 'undefined' && window.aiConfig) ? window.aiConfig : null;
+    const temperature = (cfg && typeof cfg.temperature === 'number')
+        ? cfg.temperature
+        : parseFloat(localStorage.getItem('ai_temperature') || '0.7');
+    const topP = (cfg && typeof cfg.topP === 'number')
+        ? cfg.topP
+        : parseFloat(localStorage.getItem('ai_top_p') || '0.9');
+    return {
+        temperature: Number.isFinite(temperature) ? temperature : 0.7,
+        top_p: Number.isFinite(topP) ? topP : 0.9
+    };
+}
+
 async function generateSummary(type) {
     if (!appState.aiEnabled || !appState.currentFile) {
         showStatusMessage('error', '请启用AI并加载文件');
@@ -20,7 +36,8 @@ async function generateSummary(type) {
             type: type,
             filename: appState.currentFile,
             max_tokens: appState.aiOutputTokens,          // 输出Token（报告长度）
-            context_budget: appState.aiContextTokens       // 输入Token预算（聊天采样）
+            context_budget: appState.aiContextTokens,      // 输入Token预算（聊天采样）
+            ...getAiGenerationParams()
         };
         
         // 检查是否选择了缓存ID
