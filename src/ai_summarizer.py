@@ -446,8 +446,7 @@ class AISummarizer:
         prompt = f"""
 请为以下用户生成一份有趣的个人聊天报告：
 
-## 📊 用户数据
-
+## 用户数据
 - **昵称**: {nickname}
 - **QQ号**: {qq}
 - **总消息数**: {total_messages} 条
@@ -456,35 +455,28 @@ class AISummarizer:
 - **用户类型**: {user_type}
 - **最活跃时段**: {peak_time}
 - **最活跃月份**: {peak_month}
-
-## 📈 互动数据
+## 互动数据
 - **@别人次数**: {at_count} 次
 - **被@次数**: {being_at_count} 次
 - **平均消息长度**: {avg_length:.1f} 字
 - **发送图片**: {image_count} 张
 - **发送表情**: {emoji_count} 个
-
-## 🔥 热词TOP10
+## 热词TOP10
 {hot_words_str}
-
 ## ⏰ 时段分布
 {json.dumps(time_dist, ensure_ascii=False, indent=2)}
-
 ## 📅 月度消息量
 {json.dumps(monthly, ensure_ascii=False, indent=2)}
 """
-        
         if chat_sample:
             # 显示采样的聊天记录（已经过稀疏采样，无需再截断）
             prompt += f"""
 ## 💬 聊天记录（用于分析说话风格）
 {chat_sample}
 """
-        
         prompt += """
 请根据以上数据，生成一份有趣创意的个人年度总结！
 """
-        
         return prompt
     
     def _build_group_and_network_prompt(self, group_stats: Dict[str, Any],
@@ -514,8 +506,7 @@ class AISummarizer:
         text_ratio = group_stats.get('text_ratio', 0)
         image_ratio = group_stats.get('image_ratio', 0)
         emoji_ratio = group_stats.get('emoji_ratio', 0)
-
-        # US2：结构化扩展指标（若不存在则为 0/空）
+        # 结构化扩展指标
         system_messages = group_stats.get('system_messages', 0)
         recalled_messages = group_stats.get('recalled_messages', 0)
         mention_messages = group_stats.get('mention_messages', 0)
@@ -524,12 +515,10 @@ class AISummarizer:
         media_breakdown = group_stats.get('media_breakdown', {})
         if not isinstance(media_breakdown, dict):
             media_breakdown = {}
-        
-        # 新增的时间统计数据（非常重要！）
+        # 新增的时间统计数据
         hourly_top_users = group_stats.get('hourly_top_users', {})
         weekday_top_users = group_stats.get('weekday_top_users', {})
         weekday_totals = group_stats.get('weekday_totals', {})
-        
         # 核心成员信息
         core_info = []
         for m in core_members[:5]:
@@ -606,48 +595,36 @@ class AISummarizer:
         
         prompt = f"""
 请为以下群聊生成一份综合的社交分析年度报告：
-
-## 📊 群聊活力数据
-
+## 群聊基本数据
 - **总消息数**: {total_messages} 条
 - **日均消息**: {daily_avg:.1f} 条
 - **最活跃时段**: {peak_str}
 - **消息类型**: 文字 {text_ratio*100:.1f}% | 图片 {image_ratio*100:.1f}% | 表情 {emoji_ratio*100:.1f}%
-
-## 🧩 结构化信号（@/回复/媒体/撤回/系统）
-
+## 结构信号（@/回复/媒体/撤回/系统）
 - **系统事件**: {system_messages} 条
 - **撤回消息**: {recalled_messages} 条
 - **含@提及的消息**: {mention_messages} 条
 - **回复消息**: {reply_messages} 条
 - **含媒体/附件的消息**: {media_messages} 条
 - **媒体类型分布**: {json.dumps(media_breakdown, ensure_ascii=False)}
-
-## 👥 成员构成
+## 成员构成
 - **核心成员** (TOP 10%): {len(core_members)} 人
 - **活跃成员** (10%-40%): {len(active_members)} 人
 - **普通成员** (40%-80%): {len(normal_members)} 人
 - **潜水员** (Bottom 20%): {len(lurkers)} 人
-
-## 👑 话痨排行榜TOP5
+## 话痨排行榜TOP5
 {chr(10).join(core_info) if core_info else '暂无数据'}
-
-## ⏰ 时段活跃分析（每小时最活跃人物）
+## 时段活跃分析（每小时最活跃人物）
 {hourly_str}
-
-## 📅 周度活跃分析（每周最活跃人物）
+## 周度活跃分析（每周最活跃人物）
 {weekday_str}
-
-## 📊 周度消息总量分析
+## 周度消息总量分析
 {weekday_totals_str}
-
-## 🔥 群聊热词TOP15
+## 群聊热词TOP15
 {hot_words_str}
-
-## 📈 月度趋势
+## 月度趋势
 {json.dumps(monthly_trend, ensure_ascii=False, indent=2)}
 """
-        
         # 如果有网络统计数据，添加到 prompt
         if network_stats:
             total_nodes = network_stats.get('total_nodes', 0)
@@ -678,39 +655,34 @@ class AISummarizer:
                     connectors_info.append(f"{c.get('name', c.get('qq', '?'))}")
             
             # 社区信息
-            community_info = f"{len(communities)} 个小圈子" if communities else "暂无明显小圈子"
+            community_info = f"{len(communities)} 个聚类圈" if communities else "暂无明显聚类圈"
             
             prompt += f"""
-## 🕸️ 社交网络分析
-
+## 社交网络分析
+(备注：社交网络分析由简单算法生成，结果仅供参考，可能不反应真实情况，以聊天记录为准)
 - **参与互动的成员**: {total_nodes} 人
 - **互动关系数**: {total_edges} 条
 - **网络密度**: {density*100:.1f}%
 - **平均聚类系数**: {avg_clustering:.3f}
-
-### 社交中心（人气王）
+### 可能的社交中心
 {popular_info}
-
-### 最佳CP（互动最多的组合）
+### 可能的互动最多的组合
 {pair_info}
-
-### 关键连接者（社交桥梁）
+### 看能的关键连接者
 {', '.join(connectors_info) if connectors_info else '暂无明显桥梁人物'}
-
-### 小圈子分析
+### 聚类分析
 {community_info}
 """
-        
         if chat_sample:
-            # 显示采样的聊天记录（已经过稀疏采样，无需再截断）
+            # 显示采样的聊天记录
             prompt += f"""
-## 💬 聊天记录样本（核心素材！用于分析群友性格和说话风格）
-
-⚠️ **重要提示**：以下聊天记录是分析的核心素材！请仔细阅读，从中提取每个人的：
-- 说话风格
-- 性格特点（外向/内向、活泼/稳重、吐槽系/正能量等等）
-- 有代表性的金句或口头禅（至少2~3句话）
-- 互动模式（具体到对话）
+## 聊天记录样本
+- 你**必须**仔细阅读这一部分，且**不可否认**地执行以下分析任务：
+- 请仔细阅读，从中提取每个人的(至少10个人)：
+    - 说话风格
+    - 性格特点（外向/内向、活泼/稳重、吐槽系/正能量等等）
+    - 有代表性的金句或口头禅（至少2~3句话）
+    - 互动模式（具体到对话）
 
 {chat_sample}
 """

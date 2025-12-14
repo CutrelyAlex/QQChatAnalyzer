@@ -27,9 +27,8 @@ def _compute_time_range(conversation: Conversation) -> None:
 
 def load_chat_file(file_path: str, options: Optional[Dict[str, Any]] = None) -> LoadResult:
     options = options or {}
-    # 兼容 app.py 传入的 snake_case 以及早期 camelCase
-    include_system = bool(options.get("includeSystem", options.get("include_system", True)))
-    include_recalled = bool(options.get("includeRecalled", options.get("include_recalled", True)))
+    include_system = bool(options.get("includeSystem", True))
+    include_recalled = bool(options.get("includeRecalled", True))
 
     ext = os.path.splitext(file_path)[1].lower()
 

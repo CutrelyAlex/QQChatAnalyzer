@@ -27,6 +27,12 @@ class Config:
     MAX_FILE_SIZE_MB = int(os.getenv('MAX_FILE_SIZE_MB', 100))
     MAX_MEMBERS = int(os.getenv('MAX_MEMBERS', 5000))
     MAX_RECORDS_PER_LOAD = int(os.getenv('MAX_RECORDS_PER_LOAD', 1000000))
+
+    # JSON 导入时间语义：QQChatExporter 的 timestamp 末尾常带 "Z"，但部分导出里它实际是“本地时间”。
+    # 默认把 "Z" 当作本地时间标记处理；如需严格按 UTC 解释，设置 CIYUN_JSON_ASSUME_UTC=1。
+    JSON_TIMESTAMP_ASSUME_UTC = os.getenv('CIYUN_JSON_ASSUME_UTC', '0').strip().lower() in (
+        '1', 'true', 'yes', 'y', 'on'
+    )
     
     # AI总结配置
     DEFAULT_MAX_TOKENS = int(os.getenv('DEFAULT_MAX_TOKENS', 200000))

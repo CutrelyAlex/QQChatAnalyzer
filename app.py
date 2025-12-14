@@ -395,8 +395,8 @@ def get_group_analysis():
         _conv, messages, _warnings = _load_conversation_and_messages(
             filename,
             options={
-                'include_system': include_system,
-                'include_recalled': include_recalled,
+                'includeSystem': include_system,
+                'includeRecalled': include_recalled,
             },
         )
 
@@ -431,8 +431,8 @@ def get_network_analysis():
         _conv, messages, _warnings = _load_conversation_and_messages(
             filename,
             options={
-                'include_system': include_system,
-                'include_recalled': include_recalled,
+                'includeSystem': include_system,
+                'includeRecalled': include_recalled,
             },
         )
 
@@ -481,7 +481,7 @@ def compare_files():
         # 使用相同的导入过滤规则（默认包含系统/撤回；热词在 analyzer 内默认排除）
         include_system = _parse_bool_query(request.args.get('include_system'), default=True)
         include_recalled = _parse_bool_query(request.args.get('include_recalled'), default=True)
-        options = {'include_system': include_system, 'include_recalled': include_recalled}
+        options = {'includeSystem': include_system, 'includeRecalled': include_recalled}
 
         conv_l, msgs_l, warn_l = _load_conversation_and_messages(left_name, options=options)
         conv_r, msgs_r, warn_r = _load_conversation_and_messages(right_name, options=options)
@@ -1247,7 +1247,7 @@ def get_chat_examples():
         filename = request.args.get('file', '')
         qq = request.args.get('qq', '')  # 可选：个人分析时传入
 
-        # 可选：分页
+        # 分页
         try:
             limit = int(request.args.get('limit', 4) or 4)
         except Exception:
@@ -1257,7 +1257,6 @@ def get_chat_examples():
         except Exception:
             offset = 0
 
-        # 安全限制，避免一次返回过多
         limit = max(1, min(limit, 50))
         offset = max(0, offset)
         
@@ -1292,7 +1291,7 @@ def get_chat_examples():
                 })
             _CHAT_EXAMPLES_CACHE[filename] = {'mtime': file_mtime, 'ver': _CHAT_EXAMPLES_CLEANER_VERSION, 'records': records}
         
-        # 过滤包含热词的消息（支持 offset/limit）
+        # 过滤包含热词的消息
         examples = []
         matched = 0
         has_more = False

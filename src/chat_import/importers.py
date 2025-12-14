@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .core import extract_sender_identity, merge_display_name, participant_id_from_uid_uin
 from .schema import Conversation, Mention, Message, Participant, ReplyReference, Resource, safe_int
+from ..config import Config
 
 
 # -------------------------
@@ -82,15 +83,9 @@ def _parse_timestamp_ms(value: Any) -> Optional[int]:
 
         # ISO 8601
         try:
-            # QQChatExporter V4 的 timestamp 常以 "Z" 结尾，但很多导出文件里这个时间本身就是“本地时间”。
-            # 如果把它当 UTC，再转换为本地时间，会导致小时分布整体偏移（例如 06:00 变成 14:00）。
-            # 默认：把 "Z" 当作“本地时间标记”处理（去掉 Z，按本地时区解释）。
-            # 如需严格按 UTC 解释，可设置环境变量 CIYUN_JSON_ASSUME_UTC=1。
+
             if s.endswith("Z"):
-                assume_utc = os.getenv("CIYUN_JSON_ASSUME_UTC", "0").strip().lower() in (
-                    "1", "true", "yes", "y", "on"
-                )
-                if assume_utc:
+                if bool(Config.JSON_TIMESTAMP_ASSUME_UTC):
                     dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
                 else:
                     dt = datetime.fromisoformat(s[:-1])
