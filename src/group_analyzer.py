@@ -3,10 +3,8 @@
 """
 
 from collections import defaultdict, Counter
-from datetime import datetime, timedelta
-from typing import Dict, List, Tuple, Any
-import json
-import re
+from datetime import datetime
+from typing import Dict, List, Any
 
 from .LineProcess import process_lines_data, LineData
 from .CutWords import cut_words

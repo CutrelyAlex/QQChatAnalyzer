@@ -25,7 +25,6 @@ POLLUTED_PHRASES = frozenset({
     '最新功能',
 })
 
-
 # ==================== 预编译正则表达式 ====================
 
 # 时间戳匹配 - 聊天记录行首
@@ -45,16 +44,13 @@ HTTP_PATTERN = re.compile(r'(http|https)://')
 EMOJI_PATTERN = re.compile(r'\[([^\]]+)\]')
 
 # 资源/系统占位符（用于清理热词、示例文本等）
-_BRACKET_ARTIFACT_PATTERN = re.compile(
-    r"\[(图片|表情|合并转发|聊天记录|语音|视频|文件|动画表情|动图|位置|红包|转账|卡片|名片|分享|链接|应用消息)\s*[:：]?[^\]]*\]"
-)
-_XML_DECL_PATTERN = re.compile(r"<\?xml[^>]*\?>", re.IGNORECASE)
-_XML_MSG_PATTERN = re.compile(r"<msg\b[^>]*>.*?</msg>", re.IGNORECASE | re.DOTALL)
-_XML_TAG_PATTERN = re.compile(r"<[^>]+>", re.IGNORECASE)
-_XML_ATTR_LIKE_PATTERN = re.compile(r"\b\w+\s*=\s*\"[^\"\n]{1,2000}\"")
-_XML_ATTR_LIKE_SQ_PATTERN = re.compile(r"\b\w+\s*=\s*'[^'\n]{1,2000}'")
-_LONG_HEX_PATTERN = re.compile(r"\b[0-9a-fA-F]{16,}\b")
-_HASHED_FILENAME_PATTERN = re.compile(
+_XML_DECL_PATTERN = re.compile(r"<\?xml[^>]*\?>", re.IGNORECASE) # XML声明
+_XML_MSG_PATTERN = re.compile(r"<msg\b[^>]*>.*?</msg>", re.IGNORECASE | re.DOTALL) # 完整XML消息
+_XML_TAG_PATTERN = re.compile(r"<[^>]+>", re.IGNORECASE) # 所有XML/HTML标签
+_XML_ATTR_LIKE_PATTERN = re.compile(r"\b\w+\s*=\s*\"[^\"\n]{1,2000}\"") # 类似XML属性
+_XML_ATTR_LIKE_SQ_PATTERN = re.compile(r"\b\w+\s*=\s*'[^'\n]{1,2000}'") # 类似XML属性（单引号）
+_LONG_HEX_PATTERN = re.compile(r"\b[0-9a-fA-F]{16,}\b") # 长十六进制字符串
+_HASHED_FILENAME_PATTERN = re.compile( 
     r"\b[0-9a-fA-F]{16,}\.(jpg|jpeg|png|gif|webp|bmp|mp4|mov|mkv|mp3|amr|wav)\b",
     re.IGNORECASE,
 )
@@ -66,7 +62,7 @@ _WWW_PATTERN = re.compile(r"\bwww\.[^\s]+", re.IGNORECASE)
 # 移除所有 [] 包裹的内容
 _ANY_BRACKET_PATTERN = re.compile(r"\[[^\]]*\]")
 
-# QQChatExporter / 内部标识（避免 uid token 污染热词与示例）
+# QQChatExporter内部标识
 _EXPORTER_UID_PATTERN = re.compile(r"\bu_[A-Za-z0-9_\-]{6,}\b")
 _INTERNAL_PARTICIPANT_ID_PATTERN = re.compile(r"\b(?:uid|uin|name)\s*:\s*[^\s]{1,120}\b", re.IGNORECASE)
 
@@ -77,7 +73,7 @@ def parse_timestamp(time_str: str) -> Optional[datetime]:
     """
     解析时间戳，兼容多种格式：
     - 标准ISO格式: "2025-05-10 00:30:00"
-    - 单数字小时: "2025-05-10 0:30:00"
+    - 单数字小时: "2025-05-10 0:30:00"(txt导出的格式)
     
     Args:
         time_str: 时间字符串
@@ -206,16 +202,10 @@ def clean_message_content(content: str) -> str:
 
     text = str(content)
 
-    # 常见固定占位
-    text = (text
-            .replace('[图片]', '')
-            .replace('[表情]', '')
-            .replace('撤回了一条消息', ''))
+    # 常见固定占位：撤回不是 bracket，需要单独清理
+    text = text.replace('撤回了一条消息', '')
 
-    # 资源类括号占位（支持“[图片: xxx.jpg]”“[合并转发: <xml...>]”等）
-    text = _BRACKET_ARTIFACT_PATTERN.sub(' ', text)
-
-    # 更激进：移除所有 [] 片段（如：[回复 u_xxx: 原消息]）
+    # 移除所有 [] 片段（如：[回复 u_xxx: 原消息]、[图片: xxx.jpg] [图片] [表情] 等）
     text = _ANY_BRACKET_PATTERN.sub(' ', text)
 
     # 移除 URL

@@ -104,8 +104,15 @@ class NetworkAnalyzer:
         Args:
             messages: 消息列表，每条消息包含: qq, time, content, sender等字段
         """
-        # 保持兼容：按 time 字符串排序
-        self.messages = sorted(messages, key=lambda x: x.get('time', ''))
+        # 优先按结构化 timestamp_ms 排序；缺失时回退到 time 字符串
+        def _sort_key(m: Dict[str, Any]):
+            ts = m.get('timestamp_ms')
+            if isinstance(ts, int) and ts > 0:
+                return (0, ts)
+            # 旧数据/文本导入：time 字符串通常是 YYYY-MM-DD HH:MM:SS
+            return (1, str(m.get('time', '') or ''))
+
+        self.messages = sorted(messages, key=_sort_key)
 
         # 可选：限制计算范围（Top-N 活跃用户）
         if self.limit_compute and self.max_nodes_for_viz is not None:
@@ -256,7 +263,7 @@ class NetworkAnalyzer:
         elif time_diff <= self.conversation_window:
             score += 0.1  # 在窗口内但时间较长
 
-        # 2. @提及加分（优先使用结构化 mentions；缺失回退字符串启发式）
+        # 2. @提及加分
         content1 = msg1.get('content', '')
         content2 = msg2.get('content', '')
         qq1 = msg1.get('qq', '')
