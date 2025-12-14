@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from .core import extract_sender_identity, merge_display_name, participant_id_from_uid_uin
@@ -80,20 +80,38 @@ def _parse_timestamp_ms(value: Any) -> Optional[int]:
 
     if isinstance(value, str):
         s = value.strip()
+        mode = (getattr(Config, 'JSON_TIMESTAMP_MODE', None) or 'utc_to_local').strip().lower()
 
-        # ISO 8601
+        # 1) ISO 8601
         try:
+            if mode == 'utc_to_local':
+                # 标准语义：
+                # - '...Z' 解析为 UTC aware
+                # - '...+08:00' 等 offset 保留
+                # - 无 offset 的 naive 按本地时间（datetime.timestamp() 会用本机时区解释）
+                if s.endswith('Z'):
+                    dt = datetime.fromisoformat(s.replace('Z', '+00:00'))
+                    return int(dt.timestamp() * 1000)
 
-            if s.endswith("Z"):
-                if bool(Config.JSON_TIMESTAMP_ASSUME_UTC):
-                    dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
-                else:
-                    dt = datetime.fromisoformat(s[:-1])
+                dt = datetime.fromisoformat(s)
                 return int(dt.timestamp() * 1000)
 
-            # 其他 ISO（可能带 offset / 不带 offset）
-            dt = datetime.fromisoformat(s)
-            return int(dt.timestamp() * 1000)
+            # mode == 'wysiwyg'
+            # 规则：timestamp 所见即所得
+            # - 忽略 Z / offset 等时区标记（不做任何“转换”）
+            # - 忽略毫秒（只取 HH:MM:SS）
+            # - epoch 计算按 UTC 固定，避免运行环境时区影响
+            if 'T' in s and len(s) >= 19:
+                date_part, time_part = s.split('T', 1)
+                time_hms = time_part[:8]
+                dt_naive = datetime.fromisoformat(f"{date_part} {time_hms}")
+                return int(dt_naive.replace(tzinfo=timezone.utc).timestamp() * 1000)
+
+            if len(s) >= 19 and s[10] in (' ', 'T'):
+                base = s[:19].replace('T', ' ')
+                dt_naive = datetime.fromisoformat(base)
+                return int(dt_naive.replace(tzinfo=timezone.utc).timestamp() * 1000)
+
         except Exception:
             pass
 

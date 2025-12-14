@@ -7,7 +7,7 @@ import os
 import sys
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 # 立即加载 .env 文件
@@ -83,11 +83,17 @@ def _safe_texts_file_path(filename: str) -> Path:
     return candidate
 
 
-def _format_time_from_ts_ms(ts_ms: int) -> str:
-    """把 epoch ms 转为时间字符串。"""
+def _format_time_from_ts_ms(ts_ms: int, *, use_utc: bool = False) -> str:
+    """把 epoch ms 转为时间字符串。
+
+    - JSON：timestamp epoch 以 UTC 计算；展示也用 UTC
+    - TXT：保持旧语义（本地时间）。
+    """
     try:
         if not ts_ms:
             return ''
+        if use_utc:
+            return datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
         return datetime.fromtimestamp(ts_ms / 1000).strftime('%Y-%m-%d %H:%M:%S')
     except Exception:
         return ''
@@ -152,8 +158,14 @@ def _load_conversation_and_messages(filename: str, *, options=None):
             message_id_to_sender[str(m.message_id)] = str(m.sender_participant_id)
 
     messages = []
+    use_utc_time = False
+    if filepath.suffix.lower() == '.json':
+        mode = (getattr(Config, 'JSON_TIMESTAMP_MODE', None) or 'utc_to_local').strip().lower()
+        # - utc_to_local: epoch 是 UTC，展示用本地时间
+        # - wysiwyg: epoch 固定按 UTC 计算，展示也用 UTC（避免本机时区影响）
+        use_utc_time = (mode == 'wysiwyg')
     for m in conv.messages:
-        time_str = _format_time_from_ts_ms(m.timestamp_ms)
+        time_str = _format_time_from_ts_ms(m.timestamp_ms, use_utc=use_utc_time)
 
         # 系统类事件可能没有 sender，这里用兜底身份承载
         qq = m.sender_participant_id or 'system'

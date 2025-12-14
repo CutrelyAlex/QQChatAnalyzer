@@ -31,6 +31,20 @@ class Config:
     JSON_TIMESTAMP_ASSUME_UTC = os.getenv('CIYUN_JSON_ASSUME_UTC', '0').strip().lower() in (
         '1', 'true', 'yes', 'y', 'on'
     )
+
+    # JSON 时间戳语义：
+    # - utc_to_local: 把 '...Z' 当作 UTC（标准语义），后续展示用本地时区
+    # - wysiwyg: 忽略 Z/offset，把字符串中“看到的 HH:MM:SS”当作真实时间（不做时区转换）
+    #
+    # 说明：如果未显式设置 CIYUN_JSON_TIMESTAMP_MODE，则默认选择 utc_to_local（更符合 Z 的标准语义）。
+    _JSON_TIMESTAMP_MODE_RAW = os.getenv('CIYUN_JSON_TIMESTAMP_MODE', '').strip().lower()
+    if _JSON_TIMESTAMP_MODE_RAW in ('wysiwyg', 'literal', 'as_is', 'asis', 'no_tz', 'no_timezone'):
+        JSON_TIMESTAMP_MODE = 'wysiwyg'
+    elif _JSON_TIMESTAMP_MODE_RAW in ('utc_to_local', 'utc-local', 'utc2local', 'utc', 'standard'):
+        JSON_TIMESTAMP_MODE = 'utc_to_local'
+    else:
+        # 遵循 Z 的标准语义
+        JSON_TIMESTAMP_MODE = 'utc_to_local'
     
     # AI总结配置
     DEFAULT_MAX_TOKENS = int(os.getenv('DEFAULT_MAX_TOKENS', 200000))
@@ -91,6 +105,7 @@ class Config:
         print(f"💬 Context预算: {cls.DEFAULT_CONTEXT_BUDGET} tokens")
         print(f"📝 输出长度: {cls.DEFAULT_OUTPUT_TOKENS} tokens")
         print(f"🎛️  采样参数: temperature={cls.DEFAULT_TEMPERATURE}, top_p={cls.DEFAULT_TOP_P}")
+        print(f"🕒 JSON 时间戳模式: {getattr(cls, 'JSON_TIMESTAMP_MODE', 'utc_to_local')}")
         
         # 验证并显示问题
         issues = cls.validate_config()
