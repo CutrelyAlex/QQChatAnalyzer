@@ -4,12 +4,14 @@ import re
 from functools import lru_cache
 
 from .RemoveWords import remove_words
-from .utils import SYSTEM_QQ_NUMBERS, POLLUTED_PHRASES, MENTION_PATTERN, AT_SYMBOL_PATTERN
+from .utils import (
+    SYSTEM_QQ_NUMBERS,
+    POLLUTED_PHRASES,
+    MENTION_PATTERN,
+    AT_SYMBOL_PATTERN,
+    clean_message_content,
+)
 
-# 额外噪声过滤：图片/转发占位、XML/资源字段、hash 等
-_HEX_TOKEN_RE = re.compile(r'^[0-9a-fA-F]{16,}$')
-_ALNUM_LONG_TOKEN_RE = re.compile(r'^[A-Za-z0-9]{18,}$')
-_MIXED_IDISH_TOKEN_RE = re.compile(r'^(?=(?:.*[A-Z]){2,})(?=.*[a-z])(?=.*\d)[A-Za-z0-9]{8,}$')
 _NOISE_WORDS = frozenset({
     '合并转发', '聊天记录',
     'xml', 'msg', 'serviceid', 'templateid', 'action', 'brief', 'm_resid', 'm_filename',
@@ -30,26 +32,12 @@ def _is_noise_token(word: str) -> bool:
     wl = w.lower()
     if wl in _NOISE_WORDS:
         return True
-    if _HEX_TOKEN_RE.match(w):
-        return True
     if '%' in w:
-        return True
-    if _ALNUM_LONG_TOKEN_RE.match(w) and (not w.isdigit()):
-        return True
-    # exporter/内部 id 片段（短但很“随机”的大小写+数字组合）
-    if _MIXED_IDISH_TOKEN_RE.match(w):
         return True
     # hashed filename or obvious resource suffix
     if re.search(r'\.(jpg|jpeg|png|gif|webp|bmp|mp4|mov|mkv|mp3|amr|wav)$', wl):
         return True
     return False
-
-# 局部别名（避免重复属性查找）
-_MENTION_PATTERN = MENTION_PATTERN
-_AT_PATTERN = AT_SYMBOL_PATTERN
-
-# 缓存昵称集合
-_nickname_cache = {}
 
 def build_qq_nickname_map(chat_messages):
     """
@@ -98,6 +86,12 @@ def cut_words(lines_to_process : list, top_words_num: int, nicknames: list = Non
     has_mentions = bool(sorted_nicknames)
     
     for s in lines_to_process:
+        if not s:
+            continue
+
+        # 清理策略
+        s = clean_message_content(s)
+
         # 只在有@符号且有昵称时才替换昵称
         if has_mentions and '@' in s:
             s = remove_nicknames_with_at(s, sorted_nicknames)
@@ -151,8 +145,8 @@ def remove_mentions_fast(text):
     """
     快速移除@提及
     """
-    text = _MENTION_PATTERN.sub('', text)
-    text = _AT_PATTERN.sub('', text)
+    text = MENTION_PATTERN.sub('', text)
+    text = AT_SYMBOL_PATTERN.sub('', text)
     return text.strip()
 
 

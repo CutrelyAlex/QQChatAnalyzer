@@ -1,3 +1,6 @@
+"""
+处理txt文件中的一行数据，提取相关信息
+"""
 import re
 from datetime import datetime
 from typing import List, Dict, Tuple

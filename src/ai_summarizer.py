@@ -76,8 +76,8 @@ class AISummarizer:
             base_url: OpenAI API基础URL（可选，使用环境变量如未提供）
             context_budget: 聊天记录的Token预算（输入），默认60000
             timeout: API请求超时时间（秒），从请求发送到完全接收响应，默认30秒
-            temperature: 生成随机性参数（0-2），默认 0.8（可被前端请求覆盖）
-            top_p: nucleus sampling 参数（0-1），默认 0.9（可被前端请求覆盖）
+            temperature: 生成温度参数（0-2），默认 0.8
+            top_p: nucleus sampling 参数（0-1），默认 0.9
         """
         self.model = model or os.environ.get('OPENAI_MODEL', 'gpt-4o-mini')
         self.max_tokens = max_tokens
@@ -361,7 +361,7 @@ class AISummarizer:
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=self.max_tokens,
-                temperature=self.temperature,  # 增加创意性（可配置）
+                temperature=self.temperature, 
                 top_p=self.top_p
             )
             
@@ -443,6 +443,62 @@ class AISummarizer:
                 'summary': '',
                 'error': str(e)
             }
+
+
+    def build_prompts(
+        self,
+        *,
+        summary_type: str,
+        stats: Optional[Dict[str, Any]] = None,
+        group_stats: Optional[Dict[str, Any]] = None,
+        network_stats: Optional[Dict[str, Any]] = None,
+        messages: Optional[List[Dict[str, Any]]] = None,
+        qq: Optional[str] = None,
+        chat_sample: str = "",
+    ) -> Dict[str, Any]:
+        """统一构建 system_prompt + user_prompt。
+
+        Args:
+            summary_type: personal/group/network/group_and_network
+            stats/group_stats/network_stats: 对应分析结果字典
+            messages: 完整消息列表（用于自动稀疏采样）
+            qq: personal 模式下的目标成员 id/qq
+            chat_sample: 外部已生成的聊天样本
+
+        Returns:
+            {
+              'normalized_type': 'personal'|'group_and_network',
+              'system_prompt': str,
+              'user_prompt': str,
+              'chat_sample': str,
+            }
+        """
+        t = (summary_type or '').strip().lower()
+        normalized_type = 'personal' if t == 'personal' else 'group_and_network'
+
+        final_chat_sample = chat_sample or ''
+        if messages and not final_chat_sample:
+            if normalized_type == 'personal':
+                final_chat_sample = self._sparse_sample_messages(messages, target_qq=qq or '')
+            else:
+                final_chat_sample = self._sparse_sample_messages(messages)
+
+        if normalized_type == 'personal':
+            s = stats or {}
+            user_prompt = self._build_personal_prompt(s, final_chat_sample)
+            system_prompt = self._get_system_prompt('personal')
+        else:
+            gs = group_stats or {}
+            ns = network_stats or None
+            user_prompt = self._build_group_and_network_prompt(gs, ns, final_chat_sample)
+            system_prompt = self._get_system_prompt('group_and_network')
+
+        return {
+            'normalized_type': normalized_type,
+            'system_prompt': system_prompt,
+            'user_prompt': user_prompt,
+            'chat_sample': final_chat_sample,
+        }
     
 
     def _get_system_prompt(self, summary_type: str) -> str:

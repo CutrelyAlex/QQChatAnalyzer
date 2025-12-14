@@ -630,6 +630,177 @@ def token_estimate():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# ============ AI总结============
+
+def _clamp_float(value, *, default: float, min_value: float, max_value: float) -> float:
+    try:
+        v = float(value)
+    except Exception:
+        return float(default)
+    if v < min_value:
+        return float(min_value)
+    if v > max_value:
+        return float(max_value)
+    return float(v)
+
+
+def _normalize_ai_summary_type(t: str) -> str:
+    """把各种前端/缓存传入的 type 归一为后端内部类型。"""
+    s = (t or '').strip().lower()
+    if s == 'personal':
+        return 'personal'
+    # group/network/group_and_network 统一为融合报告
+    if s in ('group', 'network', 'group_and_network'):
+        return 'group_and_network'
+    return s or 'personal'
+
+
+def _load_ai_cached_data(data: dict) -> tuple[str, str | None, dict | None]:
+    """从 exports/.analysis_cache 读取缓存数据。
+
+    Returns:
+        (normalized_summary_type, filename, cached_data)
+    """
+    import pickle
+
+    summary_type = _normalize_ai_summary_type(data.get('type', 'personal'))
+    filename = data.get('filename')
+
+    cache_id = data.get('cache_id')
+    group_cache_id = data.get('group_cache_id')
+    network_cache_id = data.get('network_cache_id')
+
+    # 合并缓存模式（群体+网络）
+    if group_cache_id and network_cache_id:
+        group_cache_file = Path('exports/.analysis_cache') / f"{group_cache_id}.pkl"
+        network_cache_file = Path('exports/.analysis_cache') / f"{network_cache_id}.pkl"
+        if not group_cache_file.exists() or not network_cache_file.exists():
+            return summary_type, filename, None
+
+        with open(group_cache_file, 'rb') as f:
+            group_cache_content = pickle.load(f)
+        with open(network_cache_file, 'rb') as f:
+            network_cache_content = pickle.load(f)
+
+        group_data = group_cache_content.get('data', {})
+        network_data = network_cache_content.get('data', {})
+
+        # 优先使用较长的 chat_sample（若存在）；但统一逻辑会尽量从原文件重采样
+        chat_sample = group_data.get('chat_sample', '')
+        other = network_data.get('chat_sample', '')
+        if len(other or '') > len(chat_sample or ''):
+            chat_sample = other
+
+        filename = group_cache_content.get('filename') or filename
+        return 'group_and_network', filename, {
+            'group_stats': group_data.get('group_stats', {}),
+            'network_stats': network_data.get('network_stats', {}),
+            'chat_sample': chat_sample,
+        }
+
+    # 单缓存模式
+    if cache_id:
+        cache_file = Path('exports/.analysis_cache') / f"{cache_id}.pkl"
+        if not cache_file.exists():
+            return summary_type, filename, None
+        with open(cache_file, 'rb') as f:
+            cache_content = pickle.load(f)
+        cached_data = cache_content.get('data')
+        filename = cache_content.get('filename') or filename
+        summary_type = _normalize_ai_summary_type(cache_content.get('type', summary_type))
+        return summary_type, filename, cached_data
+
+    return summary_type, filename, None
+
+
+def _prepare_ai_summary_context(data: dict) -> dict:
+    """解析请求 -> 解析缓存 -> 加载消息 -> 得到 stats/group/network dict。"""
+
+    # 输出长度与采样预算
+    max_tokens = data.get('max_tokens', Config.DEFAULT_OUTPUT_TOKENS)
+    context_budget = data.get('context_budget', Config.DEFAULT_CONTEXT_BUDGET)
+
+    temperature = _clamp_float(
+        data.get('temperature', Config.DEFAULT_TEMPERATURE),
+        default=Config.DEFAULT_TEMPERATURE,
+        min_value=0.0,
+        max_value=2.0,
+    )
+    top_p = _clamp_float(
+        data.get('top_p', data.get('topP', Config.DEFAULT_TOP_P)),
+        default=Config.DEFAULT_TOP_P,
+        min_value=0.0,
+        max_value=1.0,
+    )
+
+    summary_type, filename, cached_data = _load_ai_cached_data(data)
+    summary_type = _normalize_ai_summary_type(summary_type)
+
+    if not filename and not cached_data:
+        raise ValueError('未指定文件或缓存')
+
+    filepath = None
+    if filename:
+        filepath = _safe_texts_file_path(filename)
+        if filepath is not None and (not filepath.exists()) and not cached_data:
+            raise FileNotFoundError('文件不存在')
+
+    # 尽量从原文件加载 messages（用于 chat_sample），缓存缺文件时才回退 chat_sample
+    messages = []
+    if filepath is not None and filepath.exists():
+        _conv, messages, _warnings = _load_conversation_and_messages(filename)
+
+    # 基于缓存/实时分析得到 stats
+    qq = data.get('qq')
+    stats_dict = None
+    group_stats_dict = None
+    network_stats_dict = None
+    chat_sample = ''
+
+    if cached_data:
+        # 注意：cached_data 结构分两类：
+        # - personal: {'stats': {...}, 'chat_sample': '...'}
+        # - group/network: {'group_stats': {...}, 'network_stats': {...}, 'chat_sample': '...'}
+        chat_sample = (cached_data.get('chat_sample') or '') if isinstance(cached_data, dict) else ''
+        if summary_type == 'personal':
+            stats_dict = (cached_data.get('stats') or {}) if isinstance(cached_data, dict) else {}
+        else:
+            group_stats_dict = (cached_data.get('group_stats') or {}) if isinstance(cached_data, dict) else {}
+            network_stats_dict = (cached_data.get('network_stats') or {}) if isinstance(cached_data, dict) else {}
+    else:
+        # 实时分析
+        if not filepath or not filepath.exists():
+            raise FileNotFoundError('文件不存在')
+
+        if summary_type == 'personal':
+            if not qq:
+                raise ValueError('个人总结需要指定成员（QQ号/昵称）')
+            analyzer = PersonalAnalyzer()
+            stats = analyzer.get_user_stats_from_messages(messages, qq)
+            if not stats:
+                raise FileNotFoundError(f'未找到账号 {qq} 的数据')
+            stats_dict = stats.to_dict()
+        else:
+            g = GroupAnalyzer(); g.load_messages(messages); group_stats_dict = g.analyze().to_dict()
+            n = NetworkAnalyzer(); n.load_messages(messages); network_stats_dict = n.analyze().to_dict()
+
+    return {
+        'summary_type': summary_type,
+        'filename': filename,
+        'filepath': filepath,
+        'qq': qq,
+        'max_tokens': max_tokens,
+        'context_budget': context_budget,
+        'temperature': temperature,
+        'top_p': top_p,
+        'messages': messages,
+        'chat_sample': chat_sample,
+        'stats': stats_dict,
+        'group_stats': group_stats_dict,
+        'network_stats': network_stats_dict,
+    }
+
+
 # ============ 分析缓存管理API ============
 
 @app.route('/api/analysis/cache/list', methods=['GET'])
@@ -788,174 +959,75 @@ def delete_analysis(cache_id):
 def generate_summary():
     """T056: 生成AI总结 - 支持从缓存数据或实时分析"""
     try:
-        import pickle
-        
-        data = request.get_json()
-        summary_type = data.get('type', 'personal')  # personal, group, network
-        cache_id = data.get('cache_id')  # 如果提供，使用缓存数据
-        filename = data.get('filename')
-        # max_tokens 控制输出长度
-        max_tokens = data.get('max_tokens', Config.DEFAULT_OUTPUT_TOKENS)
-        # context_budget 控制输入聊天记录的Token预算，用于稀疏采样
-        context_budget = data.get('context_budget', Config.DEFAULT_CONTEXT_BUDGET)
+        data = request.get_json() or {}
 
-        # 前端传入 temperature / top_p
-        def _clamp_float(value, *, default: float, min_value: float, max_value: float) -> float:
-            try:
-                v = float(value)
-            except Exception:
-                return float(default)
-            if v < min_value:
-                return float(min_value)
-            if v > max_value:
-                return float(max_value)
-            return float(v)
-
-        temperature = _clamp_float(
-            data.get('temperature', Config.DEFAULT_TEMPERATURE),
-            default=Config.DEFAULT_TEMPERATURE,
-            min_value=0.0,
-            max_value=2.0,
-        )
-        top_p = _clamp_float(
-            data.get('top_p', data.get('topP', Config.DEFAULT_TOP_P)),
-            default=Config.DEFAULT_TOP_P,
-            min_value=0.0,
-            max_value=1.0,
-        )
-        
-        # 检查是否使用缓存数据
-        analysis_data = None
-        if cache_id:
-            try:
-                cache_file = Path('exports/.analysis_cache') / f"{cache_id}.pkl"
-                if cache_file.exists():
-                    with open(cache_file, 'rb') as f:
-                        cache_content = pickle.load(f)
-                    analysis_data = cache_content.get('data')
-                    filename = cache_content.get('filename')
-                    summary_type = cache_content.get('type', summary_type)
-                    logger.info(f"Using cached analysis data: {cache_id}")
-            except Exception as e:
-                logger.warning(f"Failed to load cache {cache_id}: {e}")
-                # 继续使用实时分析
-        
-        if not filename:
-            return jsonify({'success': False, 'error': '未指定文件'}), 400
-
-        filepath = None
-        try:
-            filepath = _safe_texts_file_path(filename)
-        except Exception as e:
-            # 若来自缓存且文件名非法，仍然无法加载消息样本
-            if not analysis_data:
-                return jsonify({'success': False, 'error': str(e)}), 400
-
-        if filepath is not None and (not filepath.exists()) and not analysis_data:
-            return jsonify({'success': False, 'error': '文件不存在'}), 404
-        
         if not Config.OPENAI_API_KEY:
-            return jsonify({
-                'success': False,
-                'error': 'AI服务未配置，请设置 OPENAI_API_KEY 环境变量'
-            }), 503
-        
-        logger.info(f"Generating {summary_type} AI summary for {filename} (max_tokens={max_tokens}, context_budget={context_budget})")
-        
-        # 导入 AI Summarizer
+            return jsonify({'success': False, 'error': 'AI服务未配置，请设置 OPENAI_API_KEY 环境变量'}), 503
+
+        ctx = _prepare_ai_summary_context(data)
+
         from src.ai_summarizer import AISummarizer
-        
-        # 使用环境变量配置，传入用户指定的context_budget
+
         summarizer = AISummarizer(
             model=Config.OPENAI_MODEL,
-            max_tokens=max_tokens,
+            max_tokens=ctx['max_tokens'],
             api_key=Config.OPENAI_API_KEY,
             base_url=Config.OPENAI_API_BASE,
-            context_budget=context_budget,
+            context_budget=ctx['context_budget'],
             timeout=int(Config.OPENAI_REQUEST_TIMEOUT),
-            temperature=temperature,
-            top_p=top_p,
+            temperature=ctx['temperature'],
+            top_p=ctx['top_p'],
         )
-        
+
         if not summarizer.is_available():
-            return jsonify({
-                'success': False,
-                'error': 'AI服务未配置，请设置 OPENAI_API_KEY 环境变量'
-            }), 503
-        
-        # 如果有缓存的分析数据，仍从原文件读取消息列表以生成 chat_sample
-        if analysis_data:
-            cache_messages = []
-            if filepath is not None and filepath.exists():
-                _conv, cache_messages, _warnings = _load_conversation_and_messages(filename)
+            return jsonify({'success': False, 'error': 'AI服务未配置，请设置 OPENAI_API_KEY 环境变量'}), 503
 
-            if summary_type == 'personal':
-                result = summarizer.generate_personal_summary(
-                    analysis_data.get('stats', {}),
-                    messages=cache_messages
-                )
-            else:
-                result = summarizer.generate_group_summary(
-                    group_stats=analysis_data.get('group_stats', {}),
-                    messages=cache_messages,
-                    network_stats=analysis_data.get('network_stats')
-                )
-            return jsonify(result)
+        prompts = summarizer.build_prompts(
+            summary_type=ctx['summary_type'],
+            stats=ctx['stats'],
+            group_stats=ctx['group_stats'],
+            network_stats=ctx['network_stats'],
+            messages=ctx['messages'],
+            qq=ctx['qq'],
+            chat_sample=ctx['chat_sample'],
+        )
 
-        # 实时分析模式：统一从导入层加载消息
-        if filepath is None or not filepath.exists():
-            return jsonify({'success': False, 'error': '文件不存在'}), 404
+        logger.info(
+            f"Generating {prompts['normalized_type']} AI summary for {ctx.get('filename')} "
+            f"(max_tokens={ctx['max_tokens']}, context_budget={ctx['context_budget']}, "
+            f"temperature={summarizer.temperature}, top_p={summarizer.top_p})"
+        )
 
-        _conv, messages, _warnings = _load_conversation_and_messages(filename)
-    
-        
-        result = None
-        
-        if summary_type == 'personal':
-            # 获取个人统计
-            qq = data.get('qq')
-            if not qq:
-                return jsonify({'success': False, 'error': '个人总结需要指定成员（QQ号/昵称）'}), 400
-            
-            analyzer = PersonalAnalyzer()
-            stats = analyzer.get_user_stats_from_messages(messages, qq)
-            if not stats:
-                return jsonify({'success': False, 'error': f'未找到账号 {qq} 的数据'}), 404
-            
-            # 传递完整消息列表，由summarizer内部进行智能稀疏采样
-            result = summarizer.generate_personal_summary(stats.to_dict(), messages=messages)
-            
-        elif summary_type in ('group', 'network'):
-            # 合并处理：同时获取群体统计和网络统计
-            # 群体分析
-            group_analyzer = GroupAnalyzer()
-            group_analyzer.load_messages(messages)
-            group_stats = group_analyzer.analyze()
-            
-            # 网络分析
-            network_analyzer = NetworkAnalyzer()
-            network_analyzer.load_messages(messages)
-            network_stats = network_analyzer.analyze()
-            
-            # 合并传递给summarizer进行群体+网络融合总结
-            result = summarizer.generate_group_summary(
-                group_stats=group_stats.to_dict(),
-                messages=messages,
-                network_stats=network_stats.to_dict()
-            )
-        else:
-            return jsonify({'success': False, 'error': f'未知的总结类型: {summary_type}'}), 400
-        
+        response = summarizer.client.chat.completions.create(
+            model=summarizer.model,
+            messages=[
+                {"role": "system", "content": prompts['system_prompt']},
+                {"role": "user", "content": prompts['user_prompt']},
+            ],
+            max_tokens=summarizer.max_tokens,
+            temperature=summarizer.temperature,
+            top_p=summarizer.top_p,
+        )
+
+        summary = response.choices[0].message.content if response.choices else ''
+        tokens_used = response.usage.total_tokens if getattr(response, 'usage', None) else 0
+
         return jsonify({
-            'success': result.get('success', False),
-            'summary': result.get('summary', ''),
-            'tokens_used': result.get('tokens_used', 0),
-            'model': result.get('model', ''),
-            'temperature': result.get('temperature', temperature),
-            'top_p': result.get('top_p', top_p),
-            'error': result.get('error', '')
+            'success': True,
+            'summary': summary or '',
+            'tokens_used': tokens_used,
+            'model': summarizer.model,
+            'temperature': summarizer.temperature,
+            'top_p': summarizer.top_p,
+            'error': ''
         })
         
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except FileNotFoundError as e:
+        return jsonify({'success': False, 'error': str(e)}), 404
+    except PermissionError as e:
+        return jsonify({'success': False, 'error': str(e)}), 403
     except Exception as e:
         logger.error(f"Error generating summary: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -965,213 +1037,63 @@ def generate_summary():
 def generate_summary_stream():
     """T056b: 流式生成AI总结 - 支持从缓存数据或实时分析"""
     from flask import Response, stream_with_context
-    import pickle
-    
+
     try:
-        data = request.get_json()
-        summary_type = data.get('type', 'personal')
-        cache_id = data.get('cache_id')  # 如果提供，使用缓存数据
-        group_cache_id = data.get('group_cache_id')  # 群体分析缓存ID
-        network_cache_id = data.get('network_cache_id')  # 网络分析缓存ID
-        filename = data.get('filename')
-        max_tokens = data.get('max_tokens', Config.DEFAULT_OUTPUT_TOKENS)
-        context_budget = data.get('context_budget', Config.DEFAULT_CONTEXT_BUDGET)
-
-        def _clamp_float(value, *, default: float, min_value: float, max_value: float) -> float:
-            try:
-                v = float(value)
-            except Exception:
-                return float(default)
-            if v < min_value:
-                return float(min_value)
-            if v > max_value:
-                return float(max_value)
-            return float(v)
-
-        temperature = _clamp_float(
-            data.get('temperature', Config.DEFAULT_TEMPERATURE),
-            default=Config.DEFAULT_TEMPERATURE,
-            min_value=0.0,
-            max_value=2.0,
-        )
-        top_p = _clamp_float(
-            data.get('top_p', data.get('topP', Config.DEFAULT_TOP_P)),
-            default=Config.DEFAULT_TOP_P,
-            min_value=0.0,
-            max_value=1.0,
-        )
-        
-        # 检查是否使用缓存数据
-        cached_data = None
-        
-        # 处理合并缓存模式：同时使用群体分析和网络分析缓存
-        if group_cache_id and network_cache_id:
-            try:
-                group_cache_file = Path('exports/.analysis_cache') / f"{group_cache_id}.pkl"
-                network_cache_file = Path('exports/.analysis_cache') / f"{network_cache_id}.pkl"
-                
-                if group_cache_file.exists() and network_cache_file.exists():
-                    with open(group_cache_file, 'rb') as f:
-                        group_cache_content = pickle.load(f)
-                    with open(network_cache_file, 'rb') as f:
-                        network_cache_content = pickle.load(f)
-                    
-                    group_data = group_cache_content.get('data', {})
-                    network_data = network_cache_content.get('data', {})
-                    
-                    # 合并数据
-                    cached_data = {
-                        'group_stats': group_data.get('group_stats', {}),
-                        'network_stats': network_data.get('network_stats', {}),
-                        # 优先使用较长的聊天样本
-                        'chat_sample': group_data.get('chat_sample', '') if len(group_data.get('chat_sample', '')) >= len(network_data.get('chat_sample', '')) else network_data.get('chat_sample', '')
-                    }
-                    
-                    filename = group_cache_content.get('filename')
-                    summary_type = 'group_and_network'  # 强制设为合并类型
-                    logger.info(f"Using merged cache data: group={group_cache_id}, network={network_cache_id}")
-                else:
-                    return jsonify({'success': False, 'error': '缓存文件不存在'}), 404
-            except Exception as e:
-                logger.warning(f"Failed to load merged cache: {e}")
-                return jsonify({'success': False, 'error': f'加载合并缓存失败: {e}'}), 500
-        elif cache_id:
-            try:
-                cache_file = Path('exports/.analysis_cache') / f"{cache_id}.pkl"
-                if cache_file.exists():
-                    with open(cache_file, 'rb') as f:
-                        cache_content = pickle.load(f)
-                    cached_data = cache_content.get('data')
-                    filename = cache_content.get('filename')
-                    summary_type = cache_content.get('type', summary_type)
-                    logger.info(f"Using cached analysis data: {cache_id}")
-            except Exception as e:
-                logger.warning(f"Failed to load cache {cache_id}: {e}")
-        
-        if not filename and not cached_data:
-            return jsonify({'success': False, 'error': '未指定文件或缓存'}), 400
-
-        filepath = None
-        if filename:
-            try:
-                filepath = _safe_texts_file_path(filename)
-            except Exception as e:
-                if not cached_data:
-                    return jsonify({'success': False, 'error': str(e)}), 400
-
-        if filepath and not filepath.exists() and not cached_data:
-            return jsonify({'success': False, 'error': '文件不存在'}), 404
-        
+        data = request.get_json() or {}
         if not Config.OPENAI_API_KEY:
             return jsonify({'success': False, 'error': 'AI服务未配置'}), 503
-        
+
+        ctx = _prepare_ai_summary_context(data)
         from src.ai_summarizer import AISummarizer
+
         summarizer = AISummarizer(
             model=Config.OPENAI_MODEL,
-            max_tokens=max_tokens,
+            max_tokens=ctx['max_tokens'],
             api_key=Config.OPENAI_API_KEY,
             base_url=Config.OPENAI_API_BASE,
-            context_budget=context_budget,
+            context_budget=ctx['context_budget'],
             timeout=int(Config.OPENAI_REQUEST_TIMEOUT),
-            temperature=temperature,
-            top_p=top_p,
+            temperature=ctx['temperature'],
+            top_p=ctx['top_p'],
         )
-        
+
         if not summarizer.is_available():
             return jsonify({'success': False, 'error': 'AI服务未配置'}), 503
-        
+
+        prompts = summarizer.build_prompts(
+            summary_type=ctx['summary_type'],
+            stats=ctx['stats'],
+            group_stats=ctx['group_stats'],
+            network_stats=ctx['network_stats'],
+            messages=ctx['messages'],
+            qq=ctx['qq'],
+            chat_sample=ctx['chat_sample'],
+        )
+
         def generate():
             try:
-                # 如果有缓存数据，需要重新从原文件读取聊天记录生成 chat_sample
-                chat_sample = ""
-                if cached_data and filepath and filepath.exists():
-                    _conv, cache_messages, _warnings = _load_conversation_and_messages(filename)
+                yield f"data: {json.dumps({'type': 'start', 'model': summarizer.model, 'temperature': summarizer.temperature, 'top_p': summarizer.top_p})}\n\n"
 
-                    if summary_type == 'personal':
-                        target_qq = cached_data.get('stats', {}).get('qq', '')
-                        chat_sample = summarizer._sparse_sample_messages(cache_messages, target_qq)
-                    else:
-                        chat_sample = summarizer._sparse_sample_messages(cache_messages)
-                    
-                    logger.info(f"Generated chat_sample from file: {len(chat_sample)} chars")
-                
-                if cached_data:
-                    logger.info(f"Generating from cached data, type={summary_type}")
-                    
-                    if summary_type == 'personal':
-                        stats = cached_data.get('stats', {})
-                        prompt = summarizer._build_personal_prompt(stats, chat_sample)
-                        system_prompt = summarizer._get_system_prompt('personal')
-                    else:
-                        group_stats = cached_data.get('group_stats', {})
-                        network_stats = cached_data.get('network_stats', {})
-                        prompt = summarizer._build_group_and_network_prompt(
-                            group_stats, network_stats, chat_sample
-                        )
-                        system_prompt = summarizer._get_system_prompt('group_and_network')
-                else:
-                    if not filepath or not filepath.exists():
-                        yield f"data: {json.dumps({'type': 'error', 'message': '文件不存在'})}\n\n"
-                        return
-
-                    _conv, messages, _warnings = _load_conversation_and_messages(filename)
-                    
-                    if summary_type == 'personal':
-                        qq = data.get('qq')
-                        if not qq:
-                            yield f"data: {json.dumps({'type': 'error', 'message': '个人总结需要指定成员（QQ号/昵称）'})}\n\n"
-                            return
-                        analyzer = PersonalAnalyzer()
-                        stats = analyzer.get_user_stats_from_messages(messages, qq)
-                        if not stats:
-                            yield f"data: {json.dumps({'type': 'error', 'message': f'未找到账号 {qq} 的数据'})}\n\n"
-                            return
-                        # 使用稀疏采样生成聊天记录样本
-                        chat_sample = summarizer._sparse_sample_messages(messages, qq)
-                        prompt = summarizer._build_personal_prompt(stats.to_dict(), chat_sample)
-                        system_prompt = summarizer._get_system_prompt('personal')
-                    else:
-                        group_analyzer = GroupAnalyzer()
-                        group_analyzer.load_messages(messages)
-                        group_stats = group_analyzer.analyze()
-                        
-                        network_analyzer = NetworkAnalyzer()
-                        network_analyzer.load_messages(messages)
-                        network_stats = network_analyzer.analyze()
-                        
-                        # 使用稀疏采样生成聊天记录样本
-                        chat_sample = summarizer._sparse_sample_messages(messages)
-                        prompt = summarizer._build_group_and_network_prompt(
-                            group_stats.to_dict(), network_stats.to_dict(), chat_sample
-                        )
-                        system_prompt = summarizer._get_system_prompt('group_and_network')
-                
-                # 发送开始事件
-                yield f"data: {json.dumps({'type': 'start', 'model': Config.OPENAI_MODEL})}\n\n"
-                
-                # 流式调用OpenAI
                 stream = summarizer.client.chat.completions.create(
-                    model=Config.OPENAI_MODEL,
+                    model=summarizer.model,
                     messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": prompt}
+                        {"role": "system", "content": prompts['system_prompt']},
+                        {"role": "user", "content": prompts['user_prompt']},
                     ],
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    top_p=top_p,
-                    stream=True
+                    max_tokens=summarizer.max_tokens,
+                    temperature=summarizer.temperature,
+                    top_p=summarizer.top_p,
+                    stream=True,
                 )
-                
+
                 total_content = ""
                 for chunk in stream:
                     if chunk.choices and chunk.choices[0].delta.content:
                         content = chunk.choices[0].delta.content
                         total_content += content
                         yield f"data: {json.dumps({'type': 'content', 'content': content})}\n\n"
-                
-                # 发送完成事件
+
                 yield f"data: {json.dumps({'type': 'done', 'total_length': len(total_content)})}\n\n"
-                
             except Exception as e:
                 logger.error(f"Stream error: {e}")
                 yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
@@ -1185,6 +1107,12 @@ def generate_summary_stream():
             }
         )
         
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except FileNotFoundError as e:
+        return jsonify({'success': False, 'error': str(e)}), 404
+    except PermissionError as e:
+        return jsonify({'success': False, 'error': str(e)}), 403
     except Exception as e:
         logger.error(f"Error in stream setup: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
