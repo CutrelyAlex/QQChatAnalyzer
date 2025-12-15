@@ -24,7 +24,7 @@ class Config:
     OPENAI_REQUEST_TIMEOUT = int(os.getenv('OPENAI_REQUEST_TIMEOUT', 30))
     
     # 数据处理配置
-    MAX_FILE_SIZE_MB = int(os.getenv('MAX_FILE_SIZE_MB', 100))
+    MAX_FILE_SIZE_MB = int(os.getenv('MAX_FILE_SIZE_MB', 500))
     MAX_MEMBERS = int(os.getenv('MAX_MEMBERS', 5000))
     MAX_RECORDS_PER_LOAD = int(os.getenv('MAX_RECORDS_PER_LOAD', 1000000))
 
@@ -36,7 +36,7 @@ class Config:
     # - utc_to_local: 把 '...Z' 当作 UTC（标准语义），后续展示用本地时区
     # - wysiwyg: 忽略 Z/offset，把字符串中“看到的 HH:MM:SS”当作真实时间（不做时区转换）
     #
-    # 说明：如果未显式设置 CIYUN_JSON_TIMESTAMP_MODE，则默认选择 utc_to_local（更符合 Z 的标准语义）。
+    # 说明：如果未显式设置 CIYUN_JSON_TIMESTAMP_MODE，则默认选择 utc_to_local。
     _JSON_TIMESTAMP_MODE_RAW = os.getenv('CIYUN_JSON_TIMESTAMP_MODE', '').strip().lower()
     if _JSON_TIMESTAMP_MODE_RAW in ('wysiwyg', 'literal', 'as_is', 'asis', 'no_tz', 'no_timezone'):
         JSON_TIMESTAMP_MODE = 'wysiwyg'
