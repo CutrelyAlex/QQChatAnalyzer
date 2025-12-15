@@ -3,34 +3,16 @@ Flask Web应用 - QQ聊天记录分析系统
 支持个人分析、群体分析、社交网络分析、AI总结、报告导出
 """
 
-import os
-import sys
-import json
 import logging
-from datetime import datetime, timezone
 from pathlib import Path
 
 # 立即加载 .env 文件
 from dotenv import load_dotenv
 load_dotenv()
 
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, jsonify
 from flask_cors import CORS
-
-# `src/` is a package; import analyzers via package path.
 from src.config import Config
-from src.personal_analyzer import PersonalAnalyzer
-from src.group_analyzer import GroupAnalyzer
-from src.network_analyzer import NetworkAnalyzer
-from src.chat_import import load_chat_file
-from src.compare import build_snapshot, diff_snapshots
-
-# 热词示例缓存
-_CHAT_EXAMPLES_CACHE = {
-    # filename: {"mtime": float, "records": [ {timestamp,sender,qq,clean_text}, ... ]}
-}
-
-_CHAT_EXAMPLES_CLEANER_VERSION = 4
 
 # 配置日志
 logging.basicConfig(
@@ -58,171 +40,6 @@ app.config.from_object(Config)
 Path('uploads').mkdir(exist_ok=True)
 Path('exports').mkdir(exist_ok=True)
 
-# texts 目录与允许的输入文件类型
-_TEXTS_DIR = Path('texts')
-_ALLOWED_SUFFIXES = {'.txt', '.json'}
-
-
-def _safe_texts_file_path(filename: str) -> Path:
-    """
-    把用户输入的文件名映射到 texts/ 下
-    仅允许 .txt/.json
-    """
-    if not filename or not isinstance(filename, str):
-        raise ValueError('未指定文件名')
-
-    texts_dir = _TEXTS_DIR.resolve()
-    candidate = (_TEXTS_DIR / filename).resolve()
-
-    if texts_dir not in candidate.parents and candidate != texts_dir:
-        raise ValueError('非法文件路径')
-
-    if candidate.suffix.lower() not in _ALLOWED_SUFFIXES:
-        raise ValueError('不支持的文件类型')
-
-    return candidate
-
-
-def _format_time_from_ts_ms(ts_ms: int, *, use_utc: bool = False) -> str:
-    """把 epoch ms 转为时间字符串。
-
-    - JSON：timestamp epoch 以 UTC 计算；展示也用 UTC
-    - TXT：保持旧语义（本地时间）。
-    """
-    try:
-        if not ts_ms:
-            return ''
-        if use_utc:
-            return datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
-        return datetime.fromtimestamp(ts_ms / 1000).strftime('%Y-%m-%d %H:%M:%S')
-    except Exception:
-        return ''
-
-
-def _parse_bool_query(value: str | None, *, default: bool = False) -> bool:
-    if value is None:
-        return default
-    s = str(value).strip().lower()
-    if s in ('1', 'true', 'yes', 'on'):
-        return True
-    if s in ('0', 'false', 'no', 'off'):
-        return False
-    return default
-
-
-def _legacy_placeholders_for_message(message_type: str, resource_types: list[str] | None, *, is_recalled: bool) -> str:
-    """为旧分析器生成可读占位符。
-    """
-
-    if is_recalled:
-        return '撤回了一条消息'
-
-    rt = [str(x) for x in (resource_types or []) if x]
-    tokens: list[str] = []
-
-    # 旧的
-    if 'image' in rt:
-        tokens.append('[图片]')
-    if 'emoji' in rt or 'sticker' in rt:
-        tokens.append('[表情]')
-
-    # 新类型占位
-    for t in rt:
-        if t in ('image', 'emoji', 'sticker'):
-            continue
-        tokens.append(f'[{t}]')
-
-    if not tokens and message_type and message_type not in ('text', 'unknown'):
-        tokens.append(f'[{message_type}]')
-
-    return ' '.join(tokens).strip()
-
-
-def _load_conversation_and_messages(filename: str, *, options=None):
-    """从 texts/ 加载归一化会话，并返回适配现有分析/AI 的消息字典列表。"""
-    options = options or {}
-    filepath = _safe_texts_file_path(filename)
-    if not filepath.exists():
-        raise FileNotFoundError('文件不存在')
-
-    result = load_chat_file(str(filepath), options=options)
-    conv = result.conversation
-
-    # participantId -> displayName
-    pid_to_name = {p.participant_id: p.display_name for p in (conv.participants or [])}
-
-    # message_id -> sender_participant_id，用于把 reply 引用解析到“回复了谁”
-    message_id_to_sender: dict[str, str] = {}
-    for m in conv.messages:
-        if m.message_id and m.sender_participant_id:
-            message_id_to_sender[str(m.message_id)] = str(m.sender_participant_id)
-
-    messages = []
-    use_utc_time = False
-    if filepath.suffix.lower() == '.json':
-        mode = (getattr(Config, 'JSON_TIMESTAMP_MODE', None) or 'utc_to_local').strip().lower()
-        # - utc_to_local: epoch 是 UTC，展示用本地时间
-        # - wysiwyg: epoch 固定按 UTC 计算，展示也用 UTC（避免本机时区影响）
-        use_utc_time = (mode == 'wysiwyg')
-    for m in conv.messages:
-        time_str = _format_time_from_ts_ms(m.timestamp_ms, use_utc=use_utc_time)
-
-        # 系统类事件可能没有 sender，这里用兜底身份承载
-        qq = m.sender_participant_id or 'system'
-        sender = m.sender_name or pid_to_name.get(qq, qq) or ('系统' if qq == 'system' else qq)
-
-        resource_types = [getattr(r, 'type', None) for r in (m.resources or [])]
-        resource_types = [str(t) for t in resource_types if t]
-
-        mention_targets = []
-        for it in (m.mentions or []):
-            try:
-                pid = getattr(it, 'target_participant_id', None)
-                name = getattr(it, 'target_name', None)
-                mention_targets.append(pid or name)
-            except Exception:
-                continue
-        mention_targets = [str(x) for x in mention_targets if x]
-
-        reply_to_mid = None
-        if m.reply_to is not None:
-            reply_to_mid = getattr(m.reply_to, 'target_message_id', None)
-            if reply_to_mid is not None:
-                reply_to_mid = str(reply_to_mid)
-
-        reply_to_qq = message_id_to_sender.get(reply_to_mid) if reply_to_mid else None
-
-        content = m.text or ''
-        if not content:
-            content = _legacy_placeholders_for_message(
-                m.message_type,
-                resource_types,
-                is_recalled=bool(m.is_recalled),
-            )
-
-        messages.append({
-            # legacy fields（现有分析器/AI/预览依赖）
-            'time': time_str,
-            'sender': sender,
-            'qq': str(qq),
-            'content': content,
-
-            # structured meta
-            'timestamp_ms': int(m.timestamp_ms or 0),
-            'message_id': str(m.message_id) if m.message_id is not None else None,
-            'is_system': bool(m.is_system),
-            'is_recalled': bool(m.is_recalled),
-            'message_type': str(m.message_type or 'unknown'),
-            'resource_types': resource_types,
-            'mention_count': int(len(mention_targets)),
-            'mentions': mention_targets,
-            'reply_to_message_id': reply_to_mid,
-            'reply_to_qq': reply_to_qq,
-        })
-
-    return conv, messages, result.warnings
-
-
 # ============ 错误处理 ============
 
 @app.errorhandler(400)
@@ -246,7 +63,8 @@ def internal_error(error):
 @app.route('/')
 def index():
     """主页"""
-    return render_template('index.html')
+    from src.web.routes.home import index as impl
+    return impl()
 
 
 # ============ 文件管理API ============
@@ -254,78 +72,15 @@ def index():
 @app.route('/api/files', methods=['GET'])
 def get_files():
     """获取可分析的文件列表（从texts/目录）"""
-    try:
-        # 获取 texts 目录下的所有可支持文件（.txt / .json）
-        _TEXTS_DIR.mkdir(exist_ok=True)
-        candidates = []
-        for ext in _ALLOWED_SUFFIXES:
-            candidates.extend(_TEXTS_DIR.glob(f'*{ext}'))
-
-        files = []
-        for f in candidates:
-            try:
-                st = f.stat()
-                files.append({
-                    'name': f.name,
-                    'size': st.st_size,
-                    'modified': datetime.fromtimestamp(st.st_mtime).isoformat(),
-                    'ext': f.suffix.lower(),
-                })
-            except Exception:
-                continue
-
-        # 最近修改优先
-        files.sort(key=lambda x: x.get('modified', ''), reverse=True)
-        
-        return jsonify({
-            'success': True,
-            'files': files,
-            'count': len(files)
-        })
-    except Exception as e:
-        logger.error(f"Error getting files: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    from src.web.routes.files import get_files as impl
+    return impl()
 
 
 @app.route('/api/load', methods=['POST'])
 def load_file():
     """加载文件进行分析"""
-    try:
-        data = request.get_json()
-        filename = data.get('filename')
-        
-        if not filename:
-            return jsonify({'success': False, 'error': '未指定文件名'}), 400
-        
-        try:
-            filepath = _safe_texts_file_path(filename)
-        except Exception as e:
-            return jsonify({'success': False, 'error': str(e)}), 400
-
-        # 只允许加载 texts 目录下的支持类型文件
-        if not filepath.exists():
-            return jsonify({'success': False, 'error': '文件不存在'}), 404
-        
-        # 检查文件大小
-        file_size_mb = filepath.stat().st_size / (1024 * 1024)
-        if file_size_mb > Config.MAX_FILE_SIZE_MB:
-            return jsonify({
-                'success': False,
-                'error': f'文件过大 ({file_size_mb:.2f}MB > {Config.MAX_FILE_SIZE_MB}MB)'
-            }), 413
-        
-        logger.info(f"Loading file: {filename}")
-        
-        return jsonify({
-            'success': True,
-            'message': f'文件 {filename} 已加载',
-            'filename': filename,
-            'ext': filepath.suffix.lower(),
-            'size_mb': round(file_size_mb, 2)
-        })
-    except Exception as e:
-        logger.error(f"Error loading file: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    from src.web.routes.files import load_file as impl
+    return impl()
 
 
 # ============ 个人分析API ============
@@ -333,155 +88,29 @@ def load_file():
 @app.route('/api/personal/list/<filename>', methods=['GET'])
 def get_personal_list(filename):
     """获取文件中所有用户列表"""
-    try:
-        conv, messages, _warnings = _load_conversation_and_messages(filename)
-
-        # 统一构建 uin/qq -> 昵称历史（按消息出现顺序累积，去重相邻）
-        qq_to_names = {}
-        for msg in (messages or []):
-            qq = (msg.get('qq') or '').strip()
-            sender = (msg.get('sender') or '').strip()
-            if not qq or not sender:
-                continue
-            lst = qq_to_names.setdefault(qq, [])
-            if not lst or lst[-1] != sender:
-                lst.append(sender)
-
-        users = []
-        for p in (conv.participants or []):
-            # 说明：
-            # - id: internal participant_id（分析与接口调用使用；可能是 uid:... 或 uin:...）
-            # - qq: QQ号（uin，纯数字字符串；可能为空）
-            # - uid: exporter uid（可能为空）
-            users.append({
-                'id': p.participant_id,
-                'qq': p.uin or '',
-                'uid': p.uid or '',
-                # 优先使用消息流中“最近出现过的昵称”，否则退回 participant 的 display_name
-                'name': (
-                    (qq_to_names.get(p.uin or '', [])[-1] if (p.uin and qq_to_names.get(p.uin or '')) else '')
-                    or p.display_name
-                    or (p.uin or p.uid or p.participant_id)
-                ),
-                # 额外返回昵称历史，便于前端统一缓存与复用（不影响旧字段）
-                'names': qq_to_names.get(p.uin or '', []),
-            })
-
-        users.sort(key=lambda x: (x.get('name') or '', x.get('qq') or '', x.get('id') or ''))
-        
-        return jsonify({
-            'success': True,
-            'users': users,
-            'count': len(users)
-        })
-    except Exception as e:
-        logger.error(f"Error getting personal list: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    from src.web.routes.personal import get_personal_list as impl
+    return impl(filename)
 
 
 @app.route('/api/personal/<qq>', methods=['GET'])
 def get_personal_analysis(qq):
     """个人分析API"""
-    try:
-        filename = request.args.get('file')
-        if not filename:
-            return jsonify({'success': False, 'error': '未指定文件'}), 400
-
-        logger.info(f"Analyzing personal stats for {qq} from {filename}")
-
-        conv, messages, _warnings = _load_conversation_and_messages(filename)
-
-        # 执行分析（走消息列表入口，避免 .txt/.json 两套解析）
-        analyzer = PersonalAnalyzer()
-        stats = analyzer.get_user_stats_from_messages(messages, qq)
-        
-        if not stats:
-            return jsonify({
-                'success': False,
-                'error': f'未找到QQ {qq} 的数据'
-            }), 404
-        
-        return jsonify({
-            'success': True,
-            'data': stats.to_dict()
-        })
-    except Exception as e:
-        logger.error(f"Error in personal analysis: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    from src.web.routes.personal import get_personal_analysis as impl
+    return impl(qq)
 
 
 @app.route('/api/group', methods=['GET'])
 def get_group_analysis():
     """群体分析API - T027实现"""
-    try:
-        filename = request.args.get('file')
-        if not filename:
-            return jsonify({'success': False, 'error': '未指定文件'}), 400
-        logger.info(f"Analyzing group stats from {filename}")
-
-        include_system = _parse_bool_query(request.args.get('include_system'), default=True)
-        include_recalled = _parse_bool_query(request.args.get('include_recalled'), default=True)
-
-        _conv, messages, _warnings = _load_conversation_and_messages(
-            filename,
-            options={
-                'includeSystem': include_system,
-                'includeRecalled': include_recalled,
-            },
-        )
-
-        analyzer = GroupAnalyzer()
-        analyzer.load_messages(messages)
-        stats = analyzer.analyze()
-        
-        return jsonify({
-            'success': True,
-            'data': stats.to_dict()
-        })
-    except Exception as e:
-        logger.error(f"Error in group analysis: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    from src.web.routes.group import get_group_analysis as impl
+    return impl()
 
 
 @app.route('/api/network', methods=['GET'])
 def get_network_analysis():
     """社交网络分析API - T036实现"""
-    try:
-        filename = request.args.get('file')
-        max_nodes = request.args.get('max_nodes', type=int)
-        max_edges = request.args.get('max_edges', type=int)
-        limit_compute = request.args.get('limit_compute', '').strip() in ('1', 'true', 'True', 'yes', 'on')
-        if not filename:
-            return jsonify({'success': False, 'error': '未指定文件'}), 400
-        logger.info(f"Analyzing network from {filename}")
-
-        include_system = _parse_bool_query(request.args.get('include_system'), default=True)
-        include_recalled = _parse_bool_query(request.args.get('include_recalled'), default=True)
-
-        _conv, messages, _warnings = _load_conversation_and_messages(
-            filename,
-            options={
-                'includeSystem': include_system,
-                'includeRecalled': include_recalled,
-            },
-        )
-
-        # 执行网络分析（允许用前端 slider 覆盖默认上限）
-        analyzer = NetworkAnalyzer(
-            max_nodes_for_viz=max_nodes,
-            max_edges_for_viz=max_edges,
-            limit_compute=limit_compute
-        )
-        analyzer.load_messages(messages)
-        stats = analyzer.analyze()
-        
-        return jsonify({
-            'success': True,
-            'data': stats.to_dict()
-        })
-    except Exception as e:
-        logger.error(f"Error in network analysis: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    from src.web.routes.network import get_network_analysis as impl
+    return impl()
 
 
 # ============ 对比分析API ============
@@ -496,59 +125,8 @@ def compare_files():
       - include_network: 是否计算网络摘要（默认 true）
       - max_nodes/max_edges/limit_compute: 传递给 NetworkAnalyzer 的参数
     """
-    try:
-        left_name = request.args.get('left')
-        right_name = request.args.get('right')
-        if not left_name or not right_name:
-            return jsonify({'success': False, 'error': '缺少 left/right 参数'}), 400
-
-        include_network = _parse_bool_query(request.args.get('include_network'), default=True)
-
-        max_nodes = request.args.get('max_nodes', type=int)
-        max_edges = request.args.get('max_edges', type=int)
-        limit_compute = _parse_bool_query(request.args.get('limit_compute'), default=True)
-
-        # 使用相同的导入过滤规则（默认包含系统/撤回；热词在 analyzer 内默认排除）
-        include_system = _parse_bool_query(request.args.get('include_system'), default=True)
-        include_recalled = _parse_bool_query(request.args.get('include_recalled'), default=True)
-        options = {'includeSystem': include_system, 'includeRecalled': include_recalled}
-
-        conv_l, msgs_l, warn_l = _load_conversation_and_messages(left_name, options=options)
-        conv_r, msgs_r, warn_r = _load_conversation_and_messages(right_name, options=options)
-
-        # Group
-        g1 = GroupAnalyzer(); g1.load_messages(msgs_l); gs1 = g1.analyze().to_dict()
-        g2 = GroupAnalyzer(); g2.load_messages(msgs_r); gs2 = g2.analyze().to_dict()
-
-        ns1 = None
-        ns2 = None
-        if include_network:
-            n1 = NetworkAnalyzer(max_nodes_for_viz=max_nodes, max_edges_for_viz=max_edges, limit_compute=limit_compute)
-            n1.load_messages(msgs_l)
-            ns1 = n1.analyze().to_dict()
-
-            n2 = NetworkAnalyzer(max_nodes_for_viz=max_nodes, max_edges_for_viz=max_edges, limit_compute=limit_compute)
-            n2.load_messages(msgs_r)
-            ns2 = n2.analyze().to_dict()
-
-        snap_l = build_snapshot(filename=left_name, conversation=conv_l, group_stats=gs1, network_stats=ns1)
-        snap_r = build_snapshot(filename=right_name, conversation=conv_r, group_stats=gs2, network_stats=ns2)
-        diff = diff_snapshots(snap_l, snap_r)
-
-        return jsonify({
-            'success': True,
-            'left': snap_l.to_dict(),
-            'right': snap_r.to_dict(),
-            'diff': diff,
-            'warnings': {
-                'left': warn_l,
-                'right': warn_r,
-            }
-        })
-
-    except Exception as e:
-        logger.error(f"Error in compare: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    from src.web.routes.compare import compare_files as impl
+    return impl()
 
 
 # ============ Token管理API (T044-T045) ============
@@ -556,596 +134,65 @@ def compare_files():
 @app.route('/api/ai/status', methods=['GET'])
 def ai_status():
     """T044: 检查AI服务状态"""
-    try:
-        api_key = Config.OPENAI_API_KEY
-        is_available = bool(api_key)
-        
-        return jsonify({
-            'success': True,
-            'available': is_available,
-            'model': Config.OPENAI_MODEL,
-            'apiBase': Config.OPENAI_API_BASE or 'https://api.openai.com/v1',
-            'message': 'AI服务可用' if is_available else 'AI服务未配置，请设置 OPENAI_API_KEY 环境变量'
-        })
-    except Exception as e:
-        logger.error(f"Error checking AI status: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    from src.web.routes.ai import ai_status as impl
+    return impl()
 
 
 @app.route('/api/test-ai-connection', methods=['POST'])
 def test_ai_connection():
     """测试AI连接配置"""
-    try:
-        data = request.get_json()
-        api_base = data.get('api_base', '')
-        api_key = data.get('api_key', '')
-        model = data.get('model', 'gpt-4o-mini')
-        timeout = data.get('timeout', 30)
-        
-        if not api_key or not api_base:
-            return jsonify({
-                'success': False,
-                'error': '请提供API密钥和基础URL'
-            }), 400
-        
-        try:
-            from openai import OpenAI
-            
-            # 创建自定义客户端进行测试
-            client = OpenAI(
-                api_key=api_key,
-                base_url=api_base
-            )
-            
-            # 发送一个简单的测试请求
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "user", "content": "ping"}
-                ],
-                max_tokens=5,
-                timeout=timeout
-            )
-            
-            return jsonify({
-                'success': True,
-                'message': '连接成功',
-                'model': model,
-                'base_url': api_base
-            })
-        except Exception as e:
-            return jsonify({
-                'success': False,
-                'error': f'连接失败: {str(e)}'
-            }), 400
-    except Exception as e:
-        logger.error(f"Error testing AI connection: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    from src.web.routes.ai import test_ai_connection as impl
+    return impl()
 
 
 @app.route('/api/ai/token-estimate', methods=['POST'])
 def token_estimate():
     """T045: Token预估API"""
-    try:
-        data = request.get_json()
-        filename = data.get('filename')
-        max_tokens = data.get('max_tokens', Config.DEFAULT_MAX_TOKENS)
-        
-        if not filename:
-            return jsonify({'success': False, 'error': '未指定文件'}), 400
-        
-        try:
-            _conv, messages, _warnings = _load_conversation_and_messages(filename)
-        except FileNotFoundError:
-            return jsonify({'success': False, 'error': '文件不存在'}), 404
-
-        from src.data_pruner import DataPruner
-
-        pruner = DataPruner(max_tokens)
-        pruner.load_messages(messages)
-        
-        # 获取 Token 估算结果
-        estimate = pruner.estimate_tokens()
-        
-        # 获取修剪策略
-        strategy = pruner.calculate_pruning_strategy()
-        
-        return jsonify({
-            'success': True,
-            'estimate': estimate,
-            'pruning_strategy': strategy
-        })
-    except Exception as e:
-        logger.error(f"Error estimating tokens: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-
-# ============ AI总结============
-
-def _clamp_float(value, *, default: float, min_value: float, max_value: float) -> float:
-    try:
-        v = float(value)
-    except Exception:
-        return float(default)
-    if v < min_value:
-        return float(min_value)
-    if v > max_value:
-        return float(max_value)
-    return float(v)
-
-
-def _normalize_ai_summary_type(t: str) -> str:
-    """把各种前端/缓存传入的 type 归一为后端内部类型。"""
-    s = (t or '').strip().lower()
-    if s == 'personal':
-        return 'personal'
-    # group/network/group_and_network 统一为融合报告
-    if s in ('group', 'network', 'group_and_network'):
-        return 'group_and_network'
-    return s or 'personal'
-
-
-def _load_ai_cached_data(data: dict) -> tuple[str, str | None, dict | None]:
-    """从 exports/.analysis_cache 读取缓存数据。
-
-    Returns:
-        (normalized_summary_type, filename, cached_data)
-    """
-    import pickle
-
-    summary_type = _normalize_ai_summary_type(data.get('type', 'personal'))
-    filename = data.get('filename')
-
-    cache_id = data.get('cache_id')
-    group_cache_id = data.get('group_cache_id')
-    network_cache_id = data.get('network_cache_id')
-
-    # 合并缓存模式（群体+网络）
-    if group_cache_id and network_cache_id:
-        group_cache_file = Path('exports/.analysis_cache') / f"{group_cache_id}.pkl"
-        network_cache_file = Path('exports/.analysis_cache') / f"{network_cache_id}.pkl"
-        if not group_cache_file.exists() or not network_cache_file.exists():
-            return summary_type, filename, None
-
-        with open(group_cache_file, 'rb') as f:
-            group_cache_content = pickle.load(f)
-        with open(network_cache_file, 'rb') as f:
-            network_cache_content = pickle.load(f)
-
-        group_data = group_cache_content.get('data', {})
-        network_data = network_cache_content.get('data', {})
-
-        # 优先使用较长的 chat_sample（若存在）；但统一逻辑会尽量从原文件重采样
-        chat_sample = group_data.get('chat_sample', '')
-        other = network_data.get('chat_sample', '')
-        if len(other or '') > len(chat_sample or ''):
-            chat_sample = other
-
-        filename = group_cache_content.get('filename') or filename
-        return 'group_and_network', filename, {
-            'group_stats': group_data.get('group_stats', {}),
-            'network_stats': network_data.get('network_stats', {}),
-            'chat_sample': chat_sample,
-        }
-
-    # 单缓存模式
-    if cache_id:
-        cache_file = Path('exports/.analysis_cache') / f"{cache_id}.pkl"
-        if not cache_file.exists():
-            return summary_type, filename, None
-        with open(cache_file, 'rb') as f:
-            cache_content = pickle.load(f)
-        cached_data = cache_content.get('data')
-        filename = cache_content.get('filename') or filename
-        summary_type = _normalize_ai_summary_type(cache_content.get('type', summary_type))
-        return summary_type, filename, cached_data
-
-    return summary_type, filename, None
-
-
-def _prepare_ai_summary_context(data: dict) -> dict:
-    """解析请求 -> 解析缓存 -> 加载消息 -> 得到 stats/group/network dict。"""
-
-    # 输出长度与采样预算
-    max_tokens = data.get('max_tokens', Config.DEFAULT_OUTPUT_TOKENS)
-    context_budget = data.get('context_budget', Config.DEFAULT_CONTEXT_BUDGET)
-
-    temperature = _clamp_float(
-        data.get('temperature', Config.DEFAULT_TEMPERATURE),
-        default=Config.DEFAULT_TEMPERATURE,
-        min_value=0.0,
-        max_value=2.0,
-    )
-    top_p = _clamp_float(
-        data.get('top_p', data.get('topP', Config.DEFAULT_TOP_P)),
-        default=Config.DEFAULT_TOP_P,
-        min_value=0.0,
-        max_value=1.0,
-    )
-
-    summary_type, filename, cached_data = _load_ai_cached_data(data)
-    summary_type = _normalize_ai_summary_type(summary_type)
-
-    if not filename and not cached_data:
-        raise ValueError('未指定文件或缓存')
-
-    filepath = None
-    if filename:
-        filepath = _safe_texts_file_path(filename)
-        if filepath is not None and (not filepath.exists()) and not cached_data:
-            raise FileNotFoundError('文件不存在')
-
-    # 尽量从原文件加载 messages（用于 chat_sample），缓存缺文件时才回退 chat_sample
-    messages = []
-    if filepath is not None and filepath.exists():
-        _conv, messages, _warnings = _load_conversation_and_messages(filename)
-
-    # 基于缓存/实时分析得到 stats
-    qq = data.get('qq')
-    stats_dict = None
-    group_stats_dict = None
-    network_stats_dict = None
-    chat_sample = ''
-
-    if cached_data:
-        # 注意：cached_data 结构分两类：
-        # - personal: {'stats': {...}, 'chat_sample': '...'}
-        # - group/network: {'group_stats': {...}, 'network_stats': {...}, 'chat_sample': '...'}
-        chat_sample = (cached_data.get('chat_sample') or '') if isinstance(cached_data, dict) else ''
-        if summary_type == 'personal':
-            stats_dict = (cached_data.get('stats') or {}) if isinstance(cached_data, dict) else {}
-        else:
-            group_stats_dict = (cached_data.get('group_stats') or {}) if isinstance(cached_data, dict) else {}
-            network_stats_dict = (cached_data.get('network_stats') or {}) if isinstance(cached_data, dict) else {}
-    else:
-        # 实时分析
-        if not filepath or not filepath.exists():
-            raise FileNotFoundError('文件不存在')
-
-        if summary_type == 'personal':
-            if not qq:
-                raise ValueError('个人总结需要指定成员（QQ号/昵称）')
-            analyzer = PersonalAnalyzer()
-            stats = analyzer.get_user_stats_from_messages(messages, qq)
-            if not stats:
-                raise FileNotFoundError(f'未找到账号 {qq} 的数据')
-            stats_dict = stats.to_dict()
-        else:
-            g = GroupAnalyzer(); g.load_messages(messages); group_stats_dict = g.analyze().to_dict()
-            n = NetworkAnalyzer(); n.load_messages(messages); network_stats_dict = n.analyze().to_dict()
-
-    return {
-        'summary_type': summary_type,
-        'filename': filename,
-        'filepath': filepath,
-        'qq': qq,
-        'max_tokens': max_tokens,
-        'context_budget': context_budget,
-        'temperature': temperature,
-        'top_p': top_p,
-        'messages': messages,
-        'chat_sample': chat_sample,
-        'stats': stats_dict,
-        'group_stats': group_stats_dict,
-        'network_stats': network_stats_dict,
-    }
-
+    from src.web.routes.ai import token_estimate as impl
+    return impl()
 
 # ============ 分析缓存管理API ============
 
 @app.route('/api/analysis/cache/list', methods=['GET'])
 def list_analysis_cache():
     """T058: 列出所有已缓存的分析数据"""
-    try:
-        import pickle
-        cache_dir = Path('exports/.analysis_cache')
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        
-        analysis_list = []
-        
-        # 遍历所有缓存文件
-        for cache_file in cache_dir.glob('*.pkl'):
-            try:
-                with open(cache_file, 'rb') as f:
-                    cache_data = pickle.load(f)
-                
-                # 提取缓存元数据
-                analysis_type = cache_data.get('type', 'unknown')
-                filename = cache_data.get('filename', 'unknown')
-                created_at = cache_data.get('created_at', '')
-                
-                # 根据类型生成显示名称
-                if analysis_type == 'personal':
-                    display_name = f"{filename} - {cache_data.get('qq', '?')} ({cache_data.get('nickname', '未知')})"
-                elif analysis_type == 'group':
-                    display_name = f"{filename} (群体+网络分析)"
-                else:
-                    display_name = f"{filename} ({analysis_type}分析)"
-                
-                analysis_list.append({
-                    'id': cache_file.stem,
-                    'type': analysis_type,
-                    'filename': filename,
-                    'display_name': display_name,
-                    'qq': cache_data.get('qq'),
-                    'nickname': cache_data.get('nickname'),
-                    'created_at': created_at,
-                    'file_size': cache_file.stat().st_size
-                })
-            except Exception as e:
-                logger.error(f"Error reading cache file {cache_file}: {e}")
-                continue
-        
-        return jsonify({
-            'success': True,
-            'cache_list': sorted(analysis_list, key=lambda x: x['created_at'], reverse=True)
-        })
-    except Exception as e:
-        logger.error(f"Error listing analysis cache: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    from src.web.routes.analysis_cache import list_analysis_cache as impl
+    return impl()
 
 
 @app.route('/api/analysis/save', methods=['POST'])
 def save_analysis():
     """T059: 保存分析数据到缓存"""
-    try:
-        import pickle
-        import hashlib
-        from datetime import datetime
-        import re
-        
-        data = request.get_json()
-        analysis_type = data.get('type', 'personal')  # personal, group, network
-        filename = data.get('filename')
-        analysis_data = data.get('data', {})
-        
-        if not filename:
-            return jsonify({'success': False, 'error': '未指定文件名'}), 400
-        
-        # 创建缓存目录
-        cache_dir = Path('exports/.analysis_cache')
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        
-        # 生成唯一的缓存ID
-        cache_id_source = f"{analysis_type}_{filename}_{datetime.now().isoformat()}"
-        cache_id = hashlib.md5(cache_id_source.encode()).hexdigest()[:8]
-        
-        # 保存缓存
-        cache_file = cache_dir / f"{cache_id}.pkl"
-        
-        cache_content = {
-            'type': analysis_type,
-            'filename': filename,
-            'created_at': datetime.now().isoformat(),
-            'data': analysis_data,
-            'qq': data.get('qq'),  # 个人分析时的QQ
-            'nickname': data.get('nickname')  # 个人分析时的昵称
-        }
-        
-        with open(cache_file, 'wb') as f:
-            pickle.dump(cache_content, f)
-        
-        logger.info(f"Saved analysis cache: {cache_id}")
-        
-        return jsonify({
-            'success': True,
-            'cache_id': cache_id,
-            'message': f'分析数据已保存，ID: {cache_id}'
-        })
-    except Exception as e:
-        logger.error(f"Error saving analysis: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    from src.web.routes.analysis_cache import save_analysis as impl
+    return impl()
 
 
 @app.route('/api/analysis/load/<cache_id>', methods=['GET'])
 def load_analysis(cache_id):
     """T060: 从缓存加载分析数据"""
-    try:
-        import pickle
-        
-        cache_file = Path('exports/.analysis_cache') / f"{cache_id}.pkl"
-        
-        if not cache_file.exists():
-            return jsonify({'success': False, 'error': '缓存不存在'}), 404
-        
-        with open(cache_file, 'rb') as f:
-            cache_data = pickle.load(f)
-        
-        return jsonify({
-            'success': True,
-            'type': cache_data.get('type'),
-            'filename': cache_data.get('filename'),
-            'data': cache_data.get('data'),
-            'qq': cache_data.get('qq'),
-            'nickname': cache_data.get('nickname')
-        })
-    except Exception as e:
-        logger.error(f"Error loading analysis: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    from src.web.routes.analysis_cache import load_analysis as impl
+    return impl(cache_id)
 
 
 @app.route('/api/analysis/delete/<cache_id>', methods=['DELETE'])
 def delete_analysis(cache_id):
     """T061: 删除缓存的分析数据"""
-    try:
-        cache_file = Path('exports/.analysis_cache') / f"{cache_id}.pkl"
-        
-        if not cache_file.exists():
-            return jsonify({'success': False, 'error': '缓存不存在'}), 404
-        
-        cache_file.unlink()
-        logger.info(f"Deleted analysis cache: {cache_id}")
-        
-        return jsonify({
-            'success': True,
-            'message': '缓存已删除'
-        })
-    except Exception as e:
-        logger.error(f"Error deleting analysis: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    from src.web.routes.analysis_cache import delete_analysis as impl
+    return impl(cache_id)
 
 
 @app.route('/api/ai/summary', methods=['POST'])
 def generate_summary():
     """T056: 生成AI总结 - 支持从缓存数据或实时分析"""
-    try:
-        data = request.get_json() or {}
-
-        if not Config.OPENAI_API_KEY:
-            return jsonify({'success': False, 'error': 'AI服务未配置，请设置 OPENAI_API_KEY 环境变量'}), 503
-
-        ctx = _prepare_ai_summary_context(data)
-
-        from src.ai_summarizer import AISummarizer
-
-        summarizer = AISummarizer(
-            model=Config.OPENAI_MODEL,
-            max_tokens=ctx['max_tokens'],
-            api_key=Config.OPENAI_API_KEY,
-            base_url=Config.OPENAI_API_BASE,
-            context_budget=ctx['context_budget'],
-            timeout=int(Config.OPENAI_REQUEST_TIMEOUT),
-            temperature=ctx['temperature'],
-            top_p=ctx['top_p'],
-        )
-
-        if not summarizer.is_available():
-            return jsonify({'success': False, 'error': 'AI服务未配置，请设置 OPENAI_API_KEY 环境变量'}), 503
-
-        prompts = summarizer.build_prompts(
-            summary_type=ctx['summary_type'],
-            stats=ctx['stats'],
-            group_stats=ctx['group_stats'],
-            network_stats=ctx['network_stats'],
-            messages=ctx['messages'],
-            qq=ctx['qq'],
-            chat_sample=ctx['chat_sample'],
-        )
-
-        logger.info(
-            f"Generating {prompts['normalized_type']} AI summary for {ctx.get('filename')} "
-            f"(max_tokens={ctx['max_tokens']}, context_budget={ctx['context_budget']}, "
-            f"temperature={summarizer.temperature}, top_p={summarizer.top_p})"
-        )
-
-        response = summarizer.client.chat.completions.create(
-            model=summarizer.model,
-            messages=[
-                {"role": "system", "content": prompts['system_prompt']},
-                {"role": "user", "content": prompts['user_prompt']},
-            ],
-            max_tokens=summarizer.max_tokens,
-            temperature=summarizer.temperature,
-            top_p=summarizer.top_p,
-        )
-
-        summary = response.choices[0].message.content if response.choices else ''
-        tokens_used = response.usage.total_tokens if getattr(response, 'usage', None) else 0
-
-        return jsonify({
-            'success': True,
-            'summary': summary or '',
-            'tokens_used': tokens_used,
-            'model': summarizer.model,
-            'temperature': summarizer.temperature,
-            'top_p': summarizer.top_p,
-            'error': ''
-        })
-        
-    except ValueError as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
-    except FileNotFoundError as e:
-        return jsonify({'success': False, 'error': str(e)}), 404
-    except PermissionError as e:
-        return jsonify({'success': False, 'error': str(e)}), 403
-    except Exception as e:
-        logger.error(f"Error generating summary: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    from src.web.routes.ai import generate_summary as impl
+    return impl()
 
 
 @app.route('/api/ai/summary/stream', methods=['POST'])
 def generate_summary_stream():
     """T056b: 流式生成AI总结 - 支持从缓存数据或实时分析"""
-    from flask import Response, stream_with_context
-
-    try:
-        data = request.get_json() or {}
-        if not Config.OPENAI_API_KEY:
-            return jsonify({'success': False, 'error': 'AI服务未配置'}), 503
-
-        ctx = _prepare_ai_summary_context(data)
-        from src.ai_summarizer import AISummarizer
-
-        summarizer = AISummarizer(
-            model=Config.OPENAI_MODEL,
-            max_tokens=ctx['max_tokens'],
-            api_key=Config.OPENAI_API_KEY,
-            base_url=Config.OPENAI_API_BASE,
-            context_budget=ctx['context_budget'],
-            timeout=int(Config.OPENAI_REQUEST_TIMEOUT),
-            temperature=ctx['temperature'],
-            top_p=ctx['top_p'],
-        )
-
-        if not summarizer.is_available():
-            return jsonify({'success': False, 'error': 'AI服务未配置'}), 503
-
-        prompts = summarizer.build_prompts(
-            summary_type=ctx['summary_type'],
-            stats=ctx['stats'],
-            group_stats=ctx['group_stats'],
-            network_stats=ctx['network_stats'],
-            messages=ctx['messages'],
-            qq=ctx['qq'],
-            chat_sample=ctx['chat_sample'],
-        )
-
-        def generate():
-            try:
-                yield f"data: {json.dumps({'type': 'start', 'model': summarizer.model, 'temperature': summarizer.temperature, 'top_p': summarizer.top_p})}\n\n"
-
-                stream = summarizer.client.chat.completions.create(
-                    model=summarizer.model,
-                    messages=[
-                        {"role": "system", "content": prompts['system_prompt']},
-                        {"role": "user", "content": prompts['user_prompt']},
-                    ],
-                    max_tokens=summarizer.max_tokens,
-                    temperature=summarizer.temperature,
-                    top_p=summarizer.top_p,
-                    stream=True,
-                )
-
-                total_content = ""
-                for chunk in stream:
-                    if chunk.choices and chunk.choices[0].delta.content:
-                        content = chunk.choices[0].delta.content
-                        total_content += content
-                        yield f"data: {json.dumps({'type': 'content', 'content': content})}\n\n"
-
-                yield f"data: {json.dumps({'type': 'done', 'total_length': len(total_content)})}\n\n"
-            except Exception as e:
-                logger.error(f"Stream error: {e}")
-                yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-        
-        return Response(
-            stream_with_context(generate()),
-            mimetype='text/event-stream',
-            headers={
-                'Cache-Control': 'no-cache',
-                'X-Accel-Buffering': 'no'
-            }
-        )
-        
-    except ValueError as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
-    except FileNotFoundError as e:
-        return jsonify({'success': False, 'error': str(e)}), 404
-    except PermissionError as e:
-        return jsonify({'success': False, 'error': str(e)}), 403
-    except Exception as e:
-        logger.error(f"Error in stream setup: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    from src.web.routes.ai import generate_summary_stream as impl
+    return impl()
 
 
 # ============ 聊天记录预览API ============
@@ -1153,95 +200,15 @@ def generate_summary_stream():
 @app.route('/api/preview/<filename>', methods=['GET'])
 def preview_chat_records(filename):
     """预览聊天记录"""
-    try:
-        try:
-            _conv, messages, _warnings = _load_conversation_and_messages(filename)
-        except FileNotFoundError:
-            return jsonify({'success': False, 'error': '文件不存在'}), 404
-        
-        # 获取分页参数
-        page = int(request.args.get('page', 1))
-        page_size = int(request.args.get('page_size', 50))
-        filter_type = request.args.get('filter_type', 'all')  # all, date, qq
-        filter_value = request.args.get('filter_value', '')
-        
-        records = []
-        for msg in messages:
-            timestamp = msg.get('time', '')
-            sender = msg.get('sender', '')
-            qq = msg.get('qq', '')
-            content = msg.get('content', '')
-
-            # 应用过滤
-            if filter_type == 'date':
-                if filter_value and not str(timestamp).startswith(filter_value):
-                    continue
-            elif filter_type == 'qq':
-                if filter_value and str(qq) != filter_value:
-                    continue
-
-            records.append({
-                'timestamp': timestamp,
-                'sender': sender,
-                'qq': qq,
-                'content': (content or '')[:100]
-            })
-        
-        # 分页
-        total = len(records)
-        start = (page - 1) * page_size
-        end = start + page_size
-        paginated_records = records[start:end]
-        
-        return jsonify({
-            'success': True,
-            'records': paginated_records,
-            'total': total,
-            'page': page,
-            'page_size': page_size,
-            'total_pages': (total + page_size - 1) // page_size
-        })
-    except Exception as e:
-        logger.error(f"Error previewing chat records: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    from src.web.routes.preview import preview_chat_records as impl
+    return impl(filename)
 
 
 @app.route('/api/preview/<filename>/stats', methods=['GET'])
 def preview_chat_stats(filename):
     """获取聊天记录统计信息（用于过滤器）"""
-    try:
-        try:
-            _conv, messages, _warnings = _load_conversation_and_messages(filename)
-        except FileNotFoundError:
-            return jsonify({'success': False, 'error': '文件不存在'}), 404
-
-        dates = set()
-        qqs = {}
-        for msg in messages:
-            timestamp = msg.get('time', '')
-            sender = msg.get('sender', '')
-            qq = msg.get('qq', '')
-
-            if timestamp and ' ' in timestamp:
-                date = timestamp.split(' ', 1)[0]
-                dates.add(date)
-
-            # 以“最后一次出现的 sender”作为该 QQ 的最新昵称
-            if qq:
-                if sender:
-                    qqs[qq] = sender
-                elif qq not in qqs:
-                    # sender 为空时至少填 QQ（避免空文本）
-                    qqs[qq] = qq
-        
-        return jsonify({
-            'success': True,
-            'dates': sorted(list(dates)),
-            'qqs': [{'qq': qq, 'sender': qqs[qq]} for qq in sorted(qqs.keys())]
-        })
-    except Exception as e:
-        logger.error(f"Error getting chat stats: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    from src.web.routes.preview import preview_chat_stats as impl
+    return impl(filename)
 
 
 # ============ 导出API（预留接口）============
@@ -1249,18 +216,8 @@ def preview_chat_stats(filename):
 @app.route('/api/export/<format_type>', methods=['POST'])
 def export_report(format_type):
     """导出报告 - 预留"""
-    try:
-        if format_type not in ['html', 'pdf']:
-            return jsonify({'success': False, 'error': '不支持的导出格式'}), 400
-        
-        return jsonify({
-            'success': True,
-            'message': f'{format_type.upper()}导出功能开发中...',
-            'format': format_type
-        })
-    except Exception as e:
-        logger.error(f"Error exporting report: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    from src.web.routes.export import export_report as impl
+    return impl(format_type)
 
 
 # ============ 热词示例API ============
@@ -1268,96 +225,8 @@ def export_report(format_type):
 @app.route('/api/chat-examples', methods=['GET'])
 def get_chat_examples():
     """获取包含某个热词的聊天记录示例（2-4条）"""
-    try:
-        word = request.args.get('word', '').strip()
-        filename = request.args.get('file', '')
-        qq = request.args.get('qq', '')  # 可选：个人分析时传入
-
-        # 分页
-        try:
-            limit = int(request.args.get('limit', 4) or 4)
-        except Exception:
-            limit = 4
-        try:
-            offset = int(request.args.get('offset', 0) or 0)
-        except Exception:
-            offset = 0
-
-        limit = max(1, min(limit, 50))
-        offset = max(0, offset)
-        
-        if not word or not filename:
-            return jsonify({'success': False, 'error': '缺少必要参数'}), 400
-        
-        try:
-            filepath = _safe_texts_file_path(filename)
-        except Exception as e:
-            return jsonify({'success': False, 'error': str(e)}), 400
-
-        if not filepath.exists():
-            return jsonify({'success': False, 'error': '文件不存在'}), 404
-
-        from src.utils import clean_message_content
-
-        # 优先走缓存（按文件 mtime 自动失效）
-        file_mtime = filepath.stat().st_mtime
-        cached = _CHAT_EXAMPLES_CACHE.get(filename)
-        if cached and cached.get('mtime') == file_mtime and cached.get('ver') == _CHAT_EXAMPLES_CLEANER_VERSION:
-            records = cached.get('records', [])
-        else:
-            _conv, messages, _warnings = _load_conversation_and_messages(filename)
-            records = []
-            for m in messages:
-                content = m.get('content', '')
-                records.append({
-                    'timestamp': m.get('time', ''),
-                    'sender': m.get('sender', ''),
-                    'qq': m.get('qq', ''),
-                    'clean_text': clean_message_content(content) if content else ''
-                })
-            _CHAT_EXAMPLES_CACHE[filename] = {'mtime': file_mtime, 'ver': _CHAT_EXAMPLES_CLEANER_VERSION, 'records': records}
-        
-        # 过滤包含热词的消息
-        examples = []
-        matched = 0
-        has_more = False
-        for rec in records:
-            # 如果指定了QQ，则只查找该QQ的消息
-            if qq and rec.get('qq') != qq:
-                continue
-
-            ct = rec.get('clean_text') or ''
-            if not ct:
-                continue
-
-            # 在清理后的文本中查找热词
-            if word in ct:
-                if matched >= offset and len(examples) < limit:
-                    examples.append({
-                        'timestamp': rec.get('timestamp', ''),
-                        'sender': rec.get('sender', ''),
-                        'qq': rec.get('qq', ''),
-                        'content': ct  # 显示清理后的文本
-                    })
-                matched += 1
-
-                # 已拿满本页后，继续往后探测是否还有更多
-                if len(examples) >= limit and matched > (offset + limit - 1):
-                    has_more = True
-                    break
-        
-        return jsonify({
-            'success': True,
-            'word': word,
-            'examples': examples,
-            'offset': offset,
-            'limit': limit,
-            'next_offset': offset + len(examples),
-            'has_more': bool(has_more)
-        })
-    except Exception as e:
-        logger.error(f"Error getting chat examples: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    from src.web.routes.hotwords import get_chat_examples as impl
+    return impl()
 
 
 # ============ 系统信息API ============
@@ -1365,19 +234,8 @@ def get_chat_examples():
 @app.route('/api/system/info', methods=['GET'])
 def system_info():
     """获取系统信息"""
-    try:
-        return jsonify({
-            'success': True,
-            'app_name': '聊天记录分析系统',
-            'version': '1.0.0',
-            'flask_host': Config.HOST,
-            'flask_port': Config.PORT,
-            'ai_available': bool(Config.OPENAI_API_KEY),
-            'max_file_size_mb': Config.MAX_FILE_SIZE_MB
-        })
-    except Exception as e:
-        logger.error(f"Error getting system info: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+    from src.web.routes.system import system_info as impl
+    return impl()
 
 
 # ============ 启动应用 ============
