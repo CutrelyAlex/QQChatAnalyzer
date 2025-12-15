@@ -1,13 +1,12 @@
 import logging
 
-from flask import Blueprint, jsonify, request
+from flask import jsonify, request
 
 from src.utils import clean_message_content
 from src.web.services.conversation_loader import load_conversation_and_messages, safe_texts_file_path
 
 
 logger = logging.getLogger(__name__)
-bp = Blueprint('hotwords', __name__)
 
 
 # 热词示例缓存
@@ -18,7 +17,6 @@ _CHAT_EXAMPLES_CACHE = {
 _CHAT_EXAMPLES_CLEANER_VERSION = 4
 
 
-@bp.route('/api/chat-examples', methods=['GET'])
 def get_chat_examples():
     """获取包含某个热词的聊天记录示例（2-4条）"""
     try:

@@ -1,16 +1,12 @@
 import logging
 
-from flask import Blueprint, jsonify, request
+from flask import jsonify, request
 
 from src.personal_analyzer import PersonalAnalyzer
 from src.web.services.conversation_loader import load_conversation_and_messages
 
 
 logger = logging.getLogger(__name__)
-bp = Blueprint('personal', __name__)
-
-
-@bp.route('/api/personal/list/<filename>', methods=['GET'])
 def get_personal_list(filename):
     """获取文件中所有用户列表"""
     try:
@@ -47,8 +43,6 @@ def get_personal_list(filename):
         logger.error(f"Error getting personal list: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
-@bp.route('/api/personal/<qq>', methods=['GET'])
 def get_personal_analysis(qq):
     """个人分析API"""
     try:

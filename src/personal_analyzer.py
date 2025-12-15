@@ -8,7 +8,6 @@ from collections import defaultdict, Counter
 
 from .CutWords import cut_words
 from .RemoveWords import remove_words
-from .LineProcess import process_lines_data, LineData
 from .utils import (
     TIME_LINE_PATTERN,
     MENTION_PATTERN,

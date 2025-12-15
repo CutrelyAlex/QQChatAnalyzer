@@ -1,13 +1,9 @@
 import logging
 
-from flask import Blueprint, jsonify
+from flask import jsonify
 
 
 logger = logging.getLogger(__name__)
-bp = Blueprint('export', __name__)
-
-
-@bp.route('/api/export/<format_type>', methods=['POST'])
 def export_report(format_type):
     """导出报告 - 预留"""
     try:

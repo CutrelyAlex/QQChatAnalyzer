@@ -1,15 +1,11 @@
 import logging
 
-from flask import Blueprint, jsonify
+from flask import jsonify
 
 from src.config import Config
 
 
 logger = logging.getLogger(__name__)
-bp = Blueprint('system', __name__)
-
-
-@bp.route('/api/system/info', methods=['GET'])
 def system_info():
     """获取系统信息"""
     try:

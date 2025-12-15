@@ -1,18 +1,13 @@
 import logging
 from datetime import datetime
 
-from flask import Blueprint, jsonify, request
+from flask import jsonify, request
 
 from src.config import Config
 from src.web.services.conversation_loader import TEXTS_DIR, ALLOWED_SUFFIXES, safe_texts_file_path
 
 
 logger = logging.getLogger(__name__)
-
-bp = Blueprint('files', __name__)
-
-
-@bp.route('/api/files', methods=['GET'])
 def get_files():
     """获取可分析的文件列表（从texts/目录）"""
     try:
@@ -42,7 +37,6 @@ def get_files():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@bp.route('/api/load', methods=['POST'])
 def load_file():
     """加载文件进行分析"""
     try:

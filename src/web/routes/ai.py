@@ -1,7 +1,7 @@
 import json
 import logging
 
-from flask import Blueprint, jsonify, request
+from flask import jsonify, request
 
 from src.config import Config
 from src.web.services.ai_context import prepare_ai_summary_context
@@ -9,10 +9,6 @@ from src.web.services.conversation_loader import load_conversation_and_messages
 
 
 logger = logging.getLogger(__name__)
-bp = Blueprint('ai', __name__)
-
-
-@bp.route('/api/ai/status', methods=['GET'])
 def ai_status():
     """T044: 检查AI服务状态"""
     try:
@@ -30,8 +26,6 @@ def ai_status():
         logger.error(f"Error checking AI status: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
-@bp.route('/api/test-ai-connection', methods=['POST'])
 def test_ai_connection():
     """测试AI连接配置"""
     try:
@@ -62,8 +56,6 @@ def test_ai_connection():
         logger.error(f"Error testing AI connection: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
-@bp.route('/api/ai/token-estimate', methods=['POST'])
 def token_estimate():
     """T045: Token预估API"""
     try:
@@ -91,8 +83,6 @@ def token_estimate():
         logger.error(f"Error estimating tokens: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
-@bp.route('/api/ai/summary', methods=['POST'])
 def generate_summary():
     """T056: 生成AI总结 - 支持从缓存数据或实时分析"""
     try:
@@ -169,8 +159,6 @@ def generate_summary():
         logger.error(f"Error generating summary: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
-@bp.route('/api/ai/summary/stream', methods=['POST'])
 def generate_summary_stream():
     """T056b: 流式生成AI总结 - 支持从缓存数据或实时分析"""
     from flask import Response, stream_with_context

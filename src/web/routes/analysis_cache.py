@@ -1,14 +1,10 @@
 import logging
 from pathlib import Path
 
-from flask import Blueprint, jsonify, request
+from flask import jsonify, request
 
 
 logger = logging.getLogger(__name__)
-bp = Blueprint('analysis_cache', __name__)
-
-
-@bp.route('/api/analysis/cache/list', methods=['GET'])
 def list_analysis_cache():
     """T058: 列出所有已缓存的分析数据"""
     try:
@@ -53,8 +49,6 @@ def list_analysis_cache():
         logger.error(f"Error listing analysis cache: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
-@bp.route('/api/analysis/save', methods=['POST'])
 def save_analysis():
     """T059: 保存分析数据到缓存"""
     try:
@@ -97,8 +91,6 @@ def save_analysis():
         logger.error(f"Error saving analysis: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
-@bp.route('/api/analysis/load/<cache_id>', methods=['GET'])
 def load_analysis(cache_id):
     """T060: 从缓存加载分析数据"""
     try:
@@ -123,8 +115,6 @@ def load_analysis(cache_id):
         logger.error(f"Error loading analysis: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
-@bp.route('/api/analysis/delete/<cache_id>', methods=['DELETE'])
 def delete_analysis(cache_id):
     """T061: 删除缓存的分析数据"""
     try:

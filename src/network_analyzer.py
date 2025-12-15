@@ -1,6 +1,8 @@
 """社交网络分析模块 - 智能分析群聊中的互动关系。
 
 使用多维度算法：时间窗口对话分析 + 内容相似性 + @提及 + 连续回复。
+
+TODO: 高分辨率图片保存、全屏化网络图。
 """
 
 from collections import defaultdict
@@ -10,9 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import re
 
-from .LineProcess import process_lines_data, LineData
-from .CutWords import cut_words
-from .RemoveWords import remove_words
+from .LineProcess import process_lines_data
 from .utils import parse_timestamp
 
 

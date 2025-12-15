@@ -1,16 +1,12 @@
 import logging
 
-from flask import Blueprint, jsonify, request
+from flask import jsonify, request
 
 from src.group_analyzer import GroupAnalyzer
 from src.web.services.conversation_loader import load_conversation_and_messages, parse_bool_query
 
 
 logger = logging.getLogger(__name__)
-bp = Blueprint('group', __name__)
-
-
-@bp.route('/api/group', methods=['GET'])
 def get_group_analysis():
     """群体分析API - T027实现"""
     try:

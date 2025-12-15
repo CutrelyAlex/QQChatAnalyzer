@@ -1,15 +1,11 @@
 import logging
 
-from flask import Blueprint, jsonify, request
+from flask import jsonify, request
 
 from src.web.services.conversation_loader import load_conversation_and_messages
 
 
 logger = logging.getLogger(__name__)
-bp = Blueprint('preview', __name__)
-
-
-@bp.route('/api/preview/<filename>', methods=['GET'])
 def preview_chat_records(filename):
     """预览聊天记录"""
     try:
@@ -56,8 +52,6 @@ def preview_chat_records(filename):
         logger.error(f"Error previewing chat records: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
-@bp.route('/api/preview/<filename>/stats', methods=['GET'])
 def preview_chat_stats(filename):
     """获取聊天记录统计信息（用于过滤器）"""
     try:

@@ -1,6 +1,6 @@
 import logging
 
-from flask import Blueprint, jsonify, request
+from flask import jsonify, request
 
 from src.compare import build_snapshot, diff_snapshots
 from src.group_analyzer import GroupAnalyzer
@@ -9,10 +9,6 @@ from src.web.services.conversation_loader import load_conversation_and_messages,
 
 
 logger = logging.getLogger(__name__)
-bp = Blueprint('compare', __name__)
-
-
-@bp.route('/api/compare', methods=['GET'])
 def compare_files():
     """对比两段聊天（文件级别）。"""
     try:

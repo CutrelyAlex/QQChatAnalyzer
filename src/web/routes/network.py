@@ -1,16 +1,12 @@
 import logging
 
-from flask import Blueprint, jsonify, request
+from flask import jsonify, request
 
 from src.network_analyzer import NetworkAnalyzer
 from src.web.services.conversation_loader import load_conversation_and_messages, parse_bool_query
 
 
 logger = logging.getLogger(__name__)
-bp = Blueprint('network', __name__)
-
-
-@bp.route('/api/network', methods=['GET'])
 def get_network_analysis():
     """社交网络分析API - T036实现"""
     try:
