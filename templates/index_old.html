@@ -5,132 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QQ聊天记录分析系统</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-pro-readable.css') }}">
-
-    <!-- Pro layout (scoped). This does NOT change JS logic: it only rearranges the existing tabs into a left sidebar. -->
-    <style>
-        .tabs-container.layout-pro {
-            display: flex;
-            flex-direction: row;
-            align-items: stretch;
-        }
-
-        .tabs-container.layout-pro .tabs-header {
-            flex: 0 0 240px;
-            display: flex;
-            flex-direction: column;
-            flex-wrap: nowrap;
-            border-bottom: none;
-            border-right: 2px solid var(--accent-cyan);
-            background-color: rgba(0, 0, 0, 0.22);
-            padding: 10px 0;
-            position: sticky;
-            top: 88px;
-            height: calc(100vh - 120px);
-            overflow-y: auto;
-            overscroll-behavior: contain;
-        }
-
-        .tabs-container.layout-pro .tabs-header .sidebar-title {
-            padding: 12px 16px;
-            font-size: 12px;
-            letter-spacing: 1px;
-            opacity: 0.9;
-            user-select: none;
-            color: var(--accent-cyan);
-            text-transform: uppercase;
-        }
-
-        .tabs-container.layout-pro .tab-button {
-            flex: 0 0 auto;
-            min-width: 0;
-            width: 100%;
-            text-align: left;
-            border-bottom: 1px solid rgba(0, 255, 255, 0.12);
-            border-left: 3px solid transparent;
-            border-bottom-left-radius: 0;
-            border-bottom-right-radius: 0;
-            padding: 12px 16px;
-        }
-
-        .tabs-container.layout-pro .tab-button.active {
-            border-left-color: var(--primary-color);
-            border-bottom-color: rgba(0, 255, 255, 0.18);
-        }
-
-        .tabs-container.layout-pro .tabs-content {
-            flex: 1;
-            min-width: 0;
-        }
-
-        /* Sub-tabs: UI scaffolding only. Not wired to JS yet (planned feature). */
-        .subtabs {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin: 10px 0 18px;
-            padding-bottom: 12px;
-            border-bottom: 1px solid rgba(0, 255, 255, 0.18);
-        }
-
-        .subtab {
-            padding: 8px 10px;
-            border: 1px solid rgba(0, 255, 255, 0.35);
-            background: rgba(0, 255, 255, 0.08);
-            color: var(--accent-cyan);
-            font-size: 12px;
-            font-family: 'Courier New', monospace;
-            letter-spacing: 0.5px;
-            cursor: default;
-            user-select: none;
-        }
-
-        .subtab.is-active {
-            border-color: var(--primary-color);
-            color: var(--primary-color);
-            background: rgba(0, 255, 0, 0.08);
-        }
-
-        .subtab.is-disabled {
-            opacity: 0.55;
-        }
-
-        @media (max-width: 980px) {
-            .tabs-container.layout-pro {
-                flex-direction: column;
-            }
-
-            .tabs-container.layout-pro .tabs-header {
-                position: static;
-                top: auto;
-                height: auto;
-                flex-direction: row;
-                border-right: none;
-                border-bottom: 2px solid var(--accent-cyan);
-                overflow-x: auto;
-                overflow-y: hidden;
-                padding: 0;
-            }
-
-            .tabs-container.layout-pro .tabs-header .sidebar-title {
-                display: none;
-            }
-
-            .tabs-container.layout-pro .tab-button {
-                width: auto;
-                border-left: none;
-                border-bottom: 3px solid transparent;
-                min-width: 120px;
-                text-align: center;
-            }
-
-            .tabs-container.layout-pro .tab-button.active {
-                border-left: none;
-                border-bottom-color: var(--primary-color);
-            }
-        }
-    </style>
-
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style-readable.css') }}">
     <!-- Chart.js用于绘制图表 -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
     <!-- vis.js用于社交网络可视化 -->
@@ -172,33 +47,40 @@
             </div>
         </section>
 
-        <!-- 主功能：左侧导航 + 右侧内容（保持原有 tab-button / tab-pane / id，不改变功能） -->
-        <div class="tabs-container layout-pro">
-            <div class="tabs-header" aria-label="主功能导航">
-                <div class="sidebar-title">主功能</div>
-                <button class="tab-button active" data-tab="personal">👤 个人分析</button>
-                <button class="tab-button" data-tab="group">👥 群体分析</button>
-                <button class="tab-button" data-tab="network">🕸️ 社交网络</button>
-                <button class="tab-button" data-tab="preview">📋 聊天预览</button>
-                <button class="tab-button" data-tab="compare">🆚 对比</button>
-                <button class="tab-button" data-tab="ai-config">🤖 AI总结</button>
-                <button class="tab-button" data-tab="export">📊 导出报告(暂不支持)</button>
+        <!-- 标签页容器 -->
+        <div class="tabs-container">
+            <!-- 标签页标题 -->
+            <div class="tabs-header">
+                <button class="tab-button active" data-tab="personal">
+                    👤 个人分析
+                </button>
+                <button class="tab-button" data-tab="group">
+                    👥 群体分析
+                </button>
+                <button class="tab-button" data-tab="network">
+                    🕸️ 社交网络
+                </button>
+                <button class="tab-button" data-tab="preview">
+                    📋 聊天预览
+                </button>
+                <button class="tab-button" data-tab="compare">
+                    🆚 对比
+                </button>
+                <button class="tab-button" data-tab="ai-config">
+                    🤖 AI总结
+                </button>
+                <button class="tab-button" data-tab="export">
+                    📊 导出报告(暂不支持)
+                </button>
             </div>
 
+            <!-- 标签页内容 -->
             <div class="tabs-content">
                 <!-- 个人分析标签页 -->
                 <div class="tab-pane active" id="personal-tab">
                     <div class="tab-header">
                         <h2>个人分析</h2>
                         <p class="tab-description">分析特定成员的聊天活动、消息内容、互动行为等</p>
-
-                        <!-- 规划：个人分析子功能 Tab（暂为UI占位，不影响现有功能） -->
-                        <div class="subtabs" aria-label="个人分析子功能（规划）">
-                            <div class="subtab is-active">概览</div>
-                            <div class="subtab is-disabled">趋势</div>
-                            <div class="subtab is-disabled">内容</div>
-                            <div class="subtab is-disabled">洞察</div>
-                        </div>
                     </div>
                     <div class="tab-body">
                         <div class="input-group">
@@ -209,7 +91,7 @@
                                 分析个人
                             </button>
                         </div>
-
+                        
                         <!-- 分析进度条 -->
                         <div id="personal-progress" class="progress-container" style="display: none;">
                             <div class="progress-bar">
@@ -217,7 +99,7 @@
                             </div>
                             <div class="progress-text" id="personal-progress-text">正在分析中...</div>
                         </div>
-
+                        
                         <div id="personal-stats" class="stats-container" style="display: none;">
                             <div class="stats-grid">
                                 <div class="stat-card">
@@ -314,7 +196,7 @@
                                 <h3>🔥 个人热词榜</h3>
                                 <div id="personal-hot-words" class="hot-words-container"></div>
                             </div>
-
+                            
                             <!-- 保存分析数据按钮 -->
                             <button id="save-personal-cache-btn" class="btn btn-secondary" style="margin-top: 15px; display: none;">
                                 💾 保存分析数据
@@ -328,14 +210,6 @@
                     <div class="tab-header">
                         <h2>群体分析</h2>
                         <p class="tab-description">分析整个群的活动趋势、成员排行、热门话题等</p>
-
-                        <!-- 规划：群体分析子功能 Tab -->
-                        <div class="subtabs" aria-label="群体分析子功能（规划）">
-                            <div class="subtab is-active">概览</div>
-                            <div class="subtab is-disabled">趋势</div>
-                            <div class="subtab is-disabled">成员</div>
-                            <div class="subtab is-disabled">结构化事件</div>
-                        </div>
                     </div>
                     <div class="tab-body">
                         <button id="group-analyze-btn" class="btn btn-primary">
@@ -478,24 +352,24 @@
                                 <h3>消息类型分布</h3>
                                 <canvas id="message-type-chart"></canvas>
                             </div>
-
+                            
                             <!-- 新增：时段活跃分析 -->
                             <div class="chart-container">
                                 <h3>每小时最活跃用户</h3>
                                 <div id="hourly-top-users" class="time-analysis-grid"></div>
                             </div>
-
+                            
                             <div class="chart-container">
                                 <h3>每周各日最活跃用户</h3>
                                 <div id="weekday-top-users" class="weekday-analysis"></div>
                             </div>
-
+                            
                             <div class="chart-container">
                                 <h3>全年各星期的某天消息统计</h3>
                                 <div id="weekday-totals" class="weekday-totals-chart"></div>
                                 <canvas id="weekday-totals-chart"></canvas>
                             </div>
-
+                            
                             <!-- 保存分析数据按钮 -->
                             <button id="save-group-cache-btn" class="btn btn-secondary" style="margin-top: 15px; display: none;">
                                 💾 保存分析数据
@@ -508,12 +382,9 @@
                 <div class="tab-pane" id="network-tab">
                     <div class="tab-header">
                         <h2>社交网络分析</h2>
-                        <p class="tab-description">可视化成员之间的互动关系网络</p>
-
-                        <!-- 网络分析子功能 Tab-->
-                        <div class="subtabs" aria-label="网络分析子功能">
-                            <div class="subtab is-active">网络图</div>
-                        </div>
+                        <p class="tab-description">
+                            可视化成员之间的互动关系网络
+                        </p>
                     </div>
                     <div class="tab-body">
                         <!-- 网络图控制面板 - 在分析前设置 -->
@@ -524,19 +395,21 @@
                                         <span class="control-icon">🔗</span>
                                         <span>最大节点数: <strong id="max-nodes-value">100</strong></span>
                                     </label>
-                                    <input type="range" id="max-nodes-slider" class="control-slider" min="1" max="2000" value="100" step="1">
+                                    <input type="range" id="max-nodes-slider" class="control-slider" 
+                                           min="1" max="2000" value="100" step="1">
                                     <div class="control-range-labels">
                                         <span>1</span>
                                         <span>2000</span>
                                     </div>
                                 </div>
-
+                                
                                 <div class="control-group">
                                     <label class="control-label">
                                         <span class="control-icon">➡️</span>
                                         <span>最大边数: <strong id="max-edges-value">300</strong></span>
                                     </label>
-                                    <input type="range" id="max-edges-slider" class="control-slider" min="100" max="9999" value="300" step="1">
+                                    <input type="range" id="max-edges-slider" class="control-slider" 
+                                           min="100" max="9999" value="300" step="1">
                                     <div class="control-range-labels">
                                         <span>100</span>
                                         <span>9999</span>
@@ -546,14 +419,30 @@
                         </div>
 
                         <div class="network-layout-actions" style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0;">
-                            <button id="network-analyze-btn" class="btn btn-primary">生成网络图</button>
-                            <button id="layout-circle-btn" class="btn btn-secondary" type="button" title="圆形排布">圆形排布</button>
-                            <button id="layout-tree-btn" class="btn btn-secondary" type="button" title="树状排布">树状排布(点击节点整理)</button>
-                            <button id="layout-smart-btn" class="btn btn-secondary" type="button" title="智能排布">散落排布</button>
+                            <button id="network-analyze-btn" class="btn btn-primary">
+                                生成网络图
+                            </button>
+                            <button id="layout-circle-btn" class="btn btn-secondary" type="button" title="圆形排布">
+                                圆形排布
+                            </button>
+                            <button id="layout-tree-btn" class="btn btn-secondary" type="button" title="树状排布">
+                                树状排布(点击节点整理)
+                            </button>
+                            <button id="layout-smart-btn" class="btn btn-secondary" type="button" title="智能排布">
+                                散落排布
+                            </button>
 
                             <div class="network-search" style="display: flex; gap: 8px; align-items: center; margin-left: auto;">
-                                <input id="network-node-search" class="network-search-input" type="text" placeholder="搜索昵称或QQ号..." autocomplete="off" />
-                                <button id="network-node-search-btn" class="btn btn-secondary" type="button" title="搜索并居中到对应节点">搜索居中</button>
+                                <input
+                                    id="network-node-search"
+                                    class="network-search-input"
+                                    type="text"
+                                    placeholder="搜索昵称或QQ号..."
+                                    autocomplete="off"
+                                />
+                                <button id="network-node-search-btn" class="btn btn-secondary" type="button" title="搜索并居中到对应节点">
+                                    搜索居中
+                                </button>
                             </div>
                         </div>
 
@@ -601,7 +490,7 @@
                         <div id="network-graph-container" style="display: none;">
                             <div id="network-graph" style="width: 100%; height: 600px; border: 1px solid #ddd; border-radius: 8px;"></div>
                         </div>
-
+                        
                         <!-- 保存分析数据按钮 -->
                         <button id="save-network-cache-btn" class="btn btn-secondary" style="margin-top: 15px; display: none;">
                             💾 保存分析数据
@@ -614,14 +503,6 @@
                     <div class="tab-header">
                         <h2>对比</h2>
                         <p class="tab-description">选择两段聊天并排对比关键指标（私聊也支持）</p>
-
-                        <!-- 规划：双页分析模式（目前对比页已支持双列展示；未来可扩展到“群体双页/个人双页”） -->
-                        <div class="subtabs" aria-label="对比子功能（规划）">
-                            <div class="subtab is-active">指标对比</div>
-                            <div class="subtab is-disabled">网络对比</div>
-                            <div class="subtab is-disabled">热词对比</div>
-                            <div class="subtab is-disabled">AI结论对比</div>
-                        </div>
                     </div>
                     <div class="tab-body">
                         <div class="compare-panel">
@@ -675,13 +556,6 @@
                     <div class="tab-header">
                         <h2>聊天记录预览</h2>
                         <p class="tab-description">浏览和筛选聊天记录内容</p>
-
-                        <!-- 规划：预览子功能 Tab（暂为UI占位，不影响现有功能） -->
-                        <div class="subtabs" aria-label="预览子功能（规划）">
-                            <div class="subtab is-active">列表</div>
-                            <div class="subtab is-disabled">搜索</div>
-                            <div class="subtab is-disabled">标注/标签</div>
-                        </div>
                     </div>
                     <div class="tab-body">
                         <div class="preview-filters">
@@ -697,7 +571,9 @@
                                     <option value="">-- 所有成员 --</option>
                                 </select>
                             </div>
-                            <button id="preview-load-btn" class="btn btn-primary">加载记录</button>
+                            <button id="preview-load-btn" class="btn btn-primary">
+                                加载记录
+                            </button>
                         </div>
 
                         <div id="preview-stats" class="preview-stats" style="display: none;">
@@ -717,7 +593,8 @@
                                         <th>消息内容</th>
                                     </tr>
                                 </thead>
-                                <tbody id="preview-records-body"></tbody>
+                                <tbody id="preview-records-body">
+                                </tbody>
                             </table>
                         </div>
 
@@ -738,20 +615,12 @@
                     <div class="tab-header">
                         <h2>⚙️ 功能配置</h2>
                         <p class="tab-description">自定义AI总结的各项参数和高级设置</p>
-
-                        <!-- 规划：AI 子功能 Tab（暂为UI占位，不影响现有功能） -->
-                        <div class="subtabs" aria-label="AI 子功能（规划）">
-                            <div class="subtab is-active">配置</div>
-                            <div class="subtab is-disabled">缓存</div>
-                            <div class="subtab is-disabled">生成</div>
-                            <div class="subtab is-disabled">历史</div>
-                        </div>
                     </div>
                     <div class="tab-body">
                         <!-- 基础配置 -->
                         <div class="config-section">
                             <h3>基础配置</h3>
-
+                            
                             <div class="config-group">
                                 <label for="ai-enable-toggle">启用AI功能:</label>
                                 <div class="toggle-switch">
@@ -784,7 +653,7 @@
                         <div class="config-section">
                             <h3>高级设置</h3>
                             <button id="toggle-advanced" class="btn btn-secondary btn-small">展开高级设置</button>
-
+                            
                             <div id="advanced-settings" style="display: none; margin-top: 20px;">
                                 <div class="config-group">
                                     <label for="ai-temperature">温度 (Temperature):</label>
@@ -804,7 +673,8 @@
                                     <small style="color: #999;">范围 0-1, 控制采样的多样性</small>
                                 </div>
 
-                                <div style="padding: 15px; background: #f5f5f5; border-radius: 6px; margin-bottom: 20px;"></div>
+                                <div style="padding: 15px; background: #f5f5f5; border-radius: 6px; margin-bottom: 20px;">
+                                </div>
                             </div>
                         </div>
 
@@ -825,7 +695,7 @@
                             <p style="color: #1890ff; font-size: 13px; margin-bottom: 20px;">
                                 💡 使用说明：先在「个人分析」「群体分析」或「社交网络」页面完成分析，点击「保存分析数据」，然后在下方点击「生成总结」
                             </p>
-
+                            
                             <div id="analysis-cache-list">
                                 <p style="color: #999;">加载中...</p>
                             </div>
@@ -843,7 +713,15 @@
 
                                 <!-- 加载动画 -->
                                 <div style="text-align: center; margin: 20px 0; padding: 20px 0; border-bottom: 1px solid #ddd;">
-                                    <div style="width: 50px; height: 50px; border: 4px solid #f0f0f0; border-top: 4px solid #4CAF50; border-radius: 50%; margin: 0 auto; animation: spin 1s linear infinite;"></div>
+                                    <div style="
+                                        width: 50px;
+                                        height: 50px;
+                                        border: 4px solid #f0f0f0;
+                                        border-top: 4px solid #4CAF50;
+                                        border-radius: 50%;
+                                        margin: 0 auto;
+                                        animation: spin 1s linear infinite;
+                                    "></div>
                                     <p style="margin: 15px 0 0 0; color: #666; font-size: 14px;">处理中，请稍候...</p>
                                 </div>
 
@@ -856,13 +734,27 @@
                                 </div>
 
                                 <!-- 流式消息展示区 -->
-                                <div id="generation-stream" style="background: white; border: 1px solid #ddd; border-radius: 4px; max-height: 300px; overflow-y: auto; padding: 12px; font-size: 13px; font-family: 'Courier New', monospace; line-height: 1.6; color: #333; margin-bottom: 15px;">
+                                <div id="generation-stream" style="
+                                    background: white;
+                                    border: 1px solid #ddd;
+                                    border-radius: 4px;
+                                    max-height: 300px;
+                                    overflow-y: auto;
+                                    padding: 12px;
+                                    font-size: 13px;
+                                    font-family: 'Courier New', monospace;
+                                    line-height: 1.6;
+                                    color: #333;
+                                    margin-bottom: 15px;
+                                ">
                                     <div class="stream-log"></div>
                                 </div>
 
                                 <!-- 取消按钮 -->
                                 <div class="progress-actions" style="display: flex; gap: 10px;">
-                                    <button id="cancel-generation-btn" class="btn btn-secondary btn-small">✕ 取消生成</button>
+                                    <button id="cancel-generation-btn" class="btn btn-secondary btn-small">
+                                        ✕ 取消生成
+                                    </button>
                                     <small id="generation-time" style="color: #999; align-self: center;"></small>
                                 </div>
                             </div>
@@ -873,7 +765,19 @@
                                     <h4 style="margin: 0 0 10px 0; color: #2e7d32;">✅ 生成完成！</h4>
                                     <small id="generation-stats" style="color: #666;"></small>
                                 </div>
-                                <div id="summary-content-display" style="background: white; border: 1px solid #ddd; border-radius: 4px; max-height: 500px; overflow-y: auto; padding: 15px; font-size: 14px; line-height: 1.8; color: #333; white-space: pre-wrap; word-break: break-word;"></div>
+                                <div id="summary-content-display" style="
+                                    background: white;
+                                    border: 1px solid #ddd;
+                                    border-radius: 4px;
+                                    max-height: 500px;
+                                    overflow-y: auto;
+                                    padding: 15px;
+                                    font-size: 14px;
+                                    line-height: 1.8;
+                                    color: #333;
+                                    white-space: pre-wrap;
+                                    word-break: break-word;
+                                "></div>
                                 <div style="margin-top: 15px; display: flex; gap: 10px;">
                                     <button id="copy-summary-btn" class="btn btn-secondary btn-small">📋 复制内容</button>
                                     <button id="new-generation-btn" class="btn btn-secondary btn-small">🔄 重新生成</button>
@@ -900,13 +804,6 @@
                     <div class="tab-header">
                         <h2>导出报告</h2>
                         <p class="tab-description">将分析结果导出为HTML或PDF报告</p>
-
-                        <!-- 规划：导出子功能 Tab（暂为UI占位，不影响现有功能） -->
-                        <div class="subtabs" aria-label="导出子功能（规划）">
-                            <div class="subtab is-active">格式</div>
-                            <div class="subtab is-disabled">模板</div>
-                            <div class="subtab is-disabled">批量</div>
-                        </div>
                     </div>
                     <div class="tab-body">
                         <div class="export-options">
@@ -948,7 +845,9 @@
                         </div>
 
                         <div class="action-group">
-                            <button id="export-btn" class="btn btn-primary" disabled>📥 导出报告</button>
+                            <button id="export-btn" class="btn btn-primary" disabled>
+                                📥 导出报告
+                            </button>
                         </div>
 
                         <div id="export-status" class="status-message"></div>
@@ -956,6 +855,8 @@
                 </div>
             </div>
         </div>
+
+
 
         <!-- AI总结弹窗 -->
         <div id="summary-modal" class="modal" style="display: none;">
@@ -976,7 +877,7 @@
                         </div>
                         <div class="summary-metadata">
                             <small>
-                                ⏱️ 生成时间: <span id="summary-time">-</span> |
+                                ⏱️ 生成时间: <span id="summary-time">-</span> | 
                                 📊 Token消耗: <span id="summary-tokens">-</span> |
                                 🤖 模型: <span id="summary-model">-</span>
                             </small>
