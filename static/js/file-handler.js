@@ -151,7 +151,8 @@ async function loadPreviewFilters() {
         data.qqs.forEach(item => {
             const option = document.createElement('option');
             option.value = item.qq;
-            option.textContent = `${item.sender}(${item.qq})`;
+            const sender = (item.sender || '').toString().trim();
+            option.textContent = sender && sender !== item.qq ? `${sender}(${item.qq})` : `QQ:${item.qq}`;
             qqSelect.appendChild(option);
         });
         
@@ -184,13 +185,24 @@ async function loadQQList(filename) {
         
         if (data.users && data.users.length > 0) {
             data.users.forEach(user => {
-                const option = document.createElement('option');
-                // datalist 的 value 是用户会“输入/选择”的内容：优先 QQ号，其次昵称
                 const qq = (user.qq || '').toString().trim();
                 const name = (user.name || '').toString().trim();
-                option.value = qq || name;
-                option.textContent = qq ? `${name}(${qq})` : name;
-                datalist.appendChild(option);
+
+                // 1) 以昵称作为主要可选值（更符合“默认检索用昵称”）
+                if (name) {
+                    const optionByName = document.createElement('option');
+                    optionByName.value = name;
+                    optionByName.textContent = qq ? `${name}(${qq})` : name;
+                    datalist.appendChild(optionByName);
+                }
+
+                // 2) 同时保留 QQ 作为可选值（方便输入数字快速定位）
+                if (qq && qq !== name) {
+                    const optionByQQ = document.createElement('option');
+                    optionByQQ.value = qq;
+                    optionByQQ.textContent = name ? `${name}(${qq})` : `QQ:${qq}`;
+                    datalist.appendChild(optionByQQ);
+                }
             });
         }
     } catch (error) {

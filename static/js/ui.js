@@ -212,8 +212,15 @@ function drawMemberRankingChart(memberMessageCount) {
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
     
-    // 使用昵称作为标签，如果昵称和QQ相同则显示QQ
-    const labels = sorted.map(item => item.name !== item.qq ? item.name : `QQ:${item.qq}`);
+    // 使用“最新昵称”作为标签：优先后端提供的 name，其次用 memberIndex 里的最新昵称，最后才显示 QQ
+    const labels = sorted.map(item => {
+        const fromStats = (item.name || '').toString().trim();
+        const fromIndex = (typeof appState !== 'undefined')
+            ? ((appState.memberIndex?.byQQ?.[item.qq]?.name || appState.memberIndex?.byQQ?.[item.qq]?.names?.slice(-1)?.[0] || '').toString().trim())
+            : '';
+        const best = fromStats && fromStats !== item.qq ? fromStats : (fromIndex && fromIndex !== item.qq ? fromIndex : '');
+        return best || `QQ:${item.qq}`;
+    });
     const data = sorted.map(item => item.count);
     
     charts.memberRanking = new Chart(canvas, {

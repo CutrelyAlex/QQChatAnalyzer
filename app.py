@@ -334,7 +334,18 @@ def load_file():
 def get_personal_list(filename):
     """获取文件中所有用户列表"""
     try:
-        conv, _messages, _warnings = _load_conversation_and_messages(filename)
+        conv, messages, _warnings = _load_conversation_and_messages(filename)
+
+        # 统一构建 uin/qq -> 昵称历史（按消息出现顺序累积，去重相邻）
+        qq_to_names = {}
+        for msg in (messages or []):
+            qq = (msg.get('qq') or '').strip()
+            sender = (msg.get('sender') or '').strip()
+            if not qq or not sender:
+                continue
+            lst = qq_to_names.setdefault(qq, [])
+            if not lst or lst[-1] != sender:
+                lst.append(sender)
 
         users = []
         for p in (conv.participants or []):
@@ -346,7 +357,14 @@ def get_personal_list(filename):
                 'id': p.participant_id,
                 'qq': p.uin or '',
                 'uid': p.uid or '',
-                'name': p.display_name or (p.uin or p.uid or p.participant_id),
+                # 优先使用消息流中“最近出现过的昵称”，否则退回 participant 的 display_name
+                'name': (
+                    (qq_to_names.get(p.uin or '', [])[-1] if (p.uin and qq_to_names.get(p.uin or '')) else '')
+                    or p.display_name
+                    or (p.uin or p.uid or p.participant_id)
+                ),
+                # 额外返回昵称历史，便于前端统一缓存与复用（不影响旧字段）
+                'names': qq_to_names.get(p.uin or '', []),
             })
 
         users.sort(key=lambda x: (x.get('name') or '', x.get('qq') or '', x.get('id') or ''))
@@ -1208,8 +1226,13 @@ def preview_chat_stats(filename):
                 date = timestamp.split(' ', 1)[0]
                 dates.add(date)
 
-            if qq and qq not in qqs:
-                qqs[qq] = sender
+            # 以“最后一次出现的 sender”作为该 QQ 的最新昵称
+            if qq:
+                if sender:
+                    qqs[qq] = sender
+                elif qq not in qqs:
+                    # sender 为空时至少填 QQ（避免空文本）
+                    qqs[qq] = qq
         
         return jsonify({
             'success': True,

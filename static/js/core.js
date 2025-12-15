@@ -49,20 +49,25 @@ function buildMemberIndex(users) {
         const id = (u?.id ?? '').toString().trim();
         const qq = (u?.qq ?? '').toString().trim();
         const uid = (u?.uid ?? '').toString().trim();
-        const name = (u?.name ?? '').toString().trim();
+        // 后端可能返回 names: [历史昵称...]
+        const names = Array.isArray(u?.names) ? u.names.filter(Boolean).map(x => x.toString().trim()).filter(Boolean) : [];
+        const name = ((u?.name ?? '') || (names.length ? names[names.length - 1] : '')).toString().trim();
         if (!id && !qq && !name) continue;
 
         const normName = normalizeMemberQuery(name);
-        if (id) index.byId[id] = { id, qq, uid, name };
-        if (qq) index.byQQ[qq] = { id, qq, uid, name };
-        if (normName) index.byName[normName] = { id, qq, uid, name };
+        if (id) index.byId[id] = { id, qq, uid, name, names };
+        if (qq) index.byQQ[qq] = { id, qq, uid, name, names };
+        if (normName) index.byName[normName] = { id, qq, uid, name, names };
     }
 
     return index;
 }
 
 function formatMemberDisplay(member, fallback) {
-    const name = (member?.name ?? '').toString().trim() || (fallback ?? '').toString().trim();
+    const latestFromHistory = Array.isArray(member?.names) && member.names.length
+        ? (member.names[member.names.length - 1] ?? '').toString().trim()
+        : '';
+    const name = (latestFromHistory || (member?.name ?? '').toString().trim() || (fallback ?? '').toString().trim());
     const qq = (member?.qq ?? '').toString().trim();
     const uid = (member?.uid ?? '').toString().trim();
 

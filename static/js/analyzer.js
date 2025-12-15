@@ -177,7 +177,7 @@ async function analyzeGroup() {
             // 谁最多（带数值）
             const formatTop = (item) => {
                 if (!item) return '-';
-                const member = appState.memberIndex?.byId?.[item.qq] || null;
+                const member = appState.memberIndex?.byQQ?.[item.qq] || null;
                 if (typeof formatMemberDisplay === 'function') {
                     const disp = formatMemberDisplay(member, item.name || item.qq);
                     return `${disp.main} × ${item.count}`;
