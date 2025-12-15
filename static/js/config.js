@@ -7,7 +7,7 @@
 // ============ 配置对象 ============
 const aiConfig = {
     // 基础配置
-    enabled: localStorage.getItem('ai_enabled') !== 'false',
+    enabled: localStorage.getItem('ai_enabled') === 'true',
     target: localStorage.getItem('ai_target') || 'group',
     outputTokens: parseInt(localStorage.getItem('ai_output_tokens') || '4000'),
     contextTokens: parseInt(localStorage.getItem('ai_context_tokens') || '60000'),
@@ -104,7 +104,19 @@ function attachEventListeners() {
     if (enableToggle) {
         enableToggle.addEventListener('change', function() {
             aiConfig.enabled = this.checked;
+            try {
+                localStorage.setItem('ai_enabled', aiConfig.enabled ? 'true' : 'false');
+            } catch (e) {
+                console.warn('Failed to persist ai_enabled:', e);
+            }
+            if (typeof appState !== 'undefined') {
+                appState.aiEnabled = aiConfig.enabled;
+            }
             updateStatusText();
+
+            if (typeof updateAIPanel === 'function') {
+                updateAIPanel();
+            }
         });
     }
     
@@ -122,6 +134,14 @@ function attachEventListeners() {
         outputTokensSlider.addEventListener('input', function() {
             aiConfig.outputTokens = parseInt(this.value);
             outputTokensValue.textContent = aiConfig.outputTokens.toLocaleString();
+            try {
+                localStorage.setItem('ai_output_tokens', String(aiConfig.outputTokens));
+            } catch (e) {
+                // ignore
+            }
+            if (typeof appState !== 'undefined') {
+                appState.aiOutputTokens = aiConfig.outputTokens;
+            }
         });
     }
     
@@ -132,6 +152,14 @@ function attachEventListeners() {
         contextTokensSlider.addEventListener('input', function() {
             aiConfig.contextTokens = parseInt(this.value);
             contextTokensValue.textContent = aiConfig.contextTokens.toLocaleString();
+            try {
+                localStorage.setItem('ai_context_tokens', String(aiConfig.contextTokens));
+            } catch (e) {
+                // ignore
+            }
+            if (typeof appState !== 'undefined') {
+                appState.aiContextTokens = aiConfig.contextTokens;
+            }
         });
     }
     
@@ -154,6 +182,11 @@ function attachEventListeners() {
         temperatureSlider.addEventListener('input', function() {
             aiConfig.temperature = parseFloat(this.value);
             temperatureValue.textContent = aiConfig.temperature.toFixed(1);
+            try {
+                localStorage.setItem('ai_temperature', String(aiConfig.temperature));
+            } catch (e) {
+                // ignore
+            }
         });
     }
     
@@ -164,6 +197,11 @@ function attachEventListeners() {
         topPSlider.addEventListener('input', function() {
             aiConfig.topP = parseFloat(this.value);
             topPValue.textContent = aiConfig.topP.toFixed(2);
+            try {
+                localStorage.setItem('ai_top_p', String(aiConfig.topP));
+            } catch (e) {
+                // ignore
+            }
         });
     }
     
