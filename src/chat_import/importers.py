@@ -127,6 +127,15 @@ def _append_unique_history(history: tuple[str, ...], name: Optional[str]) -> tup
     return (*history, name)
 
 
+def _pick_latest(existing: Optional[str], new_value: Optional[str]) -> Optional[str]:
+    """取最新的非空值。"""
+
+    new_value = _norm_name(new_value)
+    if new_value:
+        return new_value
+    return existing
+
+
 def _message_type_from_nt_msg_type(nt_msg_type: Optional[int]) -> str:
     """把 rawMessage.msgType 映射为稳定的字符串。
 
@@ -413,6 +422,8 @@ def load_conversation_from_json(file_path: str) -> Tuple[Conversation, List[str]
                     uin=sender_ident.uin,
                     display_name=best_name,
                     display_name_history=_append_unique_history((), best_name),
+                    member_names=_append_unique_history((), member_name),
+                    nick_name=_pick_latest(None, nick_name),
                 )
             else:
                 new_history = _append_unique_history(existing.display_name_history, best_name)
@@ -422,6 +433,8 @@ def load_conversation_from_json(file_path: str) -> Tuple[Conversation, List[str]
                     uin=existing.uin or sender_ident.uin,
                     display_name=merge_display_name(existing.display_name, best_name),
                     display_name_history=new_history,
+                    member_names=_append_unique_history(getattr(existing, 'member_names', ()), member_name),
+                    nick_name=_pick_latest(getattr(existing, 'nick_name', None), nick_name),
                 )
 
             sender_display = participants_by_id[sender_pid].display_name

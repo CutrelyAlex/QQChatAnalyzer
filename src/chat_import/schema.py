@@ -27,6 +27,12 @@ class Participant:
     # 同一 uid/uin 的展示名（群昵称/QQ 名称）是可变的：记录出现过的名字（按出现顺序去重）
     display_name_history: tuple[str, ...] = ()
 
+    # 群昵称列表：来自 JSON rawMessage.sendMemberName（或 TXT 的 sender），按出现顺序去重
+    member_names: tuple[str, ...] = ()
+
+    # QQ 名：来自 JSON rawMessage.sendNickName（如存在）
+    nick_name: Optional[str] = None
+
 
 @dataclass(frozen=True)
 class Mention:

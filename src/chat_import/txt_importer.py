@@ -22,7 +22,7 @@ from typing import Dict, List, Optional, Tuple
 from .core import participant_id_from_uid_uin
 from .schema import Conversation, Mention, Message, Participant
 
-from ..utils import (
+from ..txt_process import (
     SYSTEM_QQ_NUMBERS,
     TIME_LINE_PATTERN,
     clean_message_content,
@@ -183,6 +183,7 @@ def load_conversation_from_txt(file_path: str) -> Tuple[Conversation, List[str]]
                 uin=str(ld.qq) if ld.qq else None,
                 uid=None,
                 display_name=ld.sender or (ld.qq or "unknown"),
+                member_names=(str(ld.sender).strip(),) if (ld.sender and str(ld.sender).strip()) else (),
             )
 
         # elements 统计

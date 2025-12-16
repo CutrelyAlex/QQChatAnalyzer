@@ -7,7 +7,6 @@ import json
 import logging
 import math
 from typing import Dict, List, Any, Optional
-from datetime import datetime
 from collections import defaultdict
 
 from .prompts import get_system_prompt
@@ -510,23 +509,41 @@ class AISummarizer:
         """构建个人总结的用户提示词"""
         
         # 提取关键数据
-        nickname = stats.get('nickname', '神秘用户')
-        qq = stats.get('qq', 'unknown')
+        display_name = stats.get('display_name', '神秘用户')
+        uin = stats.get('uin', 'unknown')
+        uid = stats.get('uid', '')
+        member_names = stats.get('memberNames', [])
+        nick_name = stats.get('nickName', '')
+
         total_messages = stats.get('total_messages', 0)
         active_days = stats.get('active_days', 0)
-        time_dist = stats.get('time_distribution', {})
-        user_type = stats.get('user_type', '普通用户')
+        time_dist_12 = stats.get('time_distribution_12', [])
+
         at_count = stats.get('at_count', 0)
         being_at_count = stats.get('being_at_count', 0)
-        avg_length = stats.get('avg_message_length', 0)
-        image_count = stats.get('image_count', 0)
-        emoji_count = stats.get('emoji_count', 0)
+        reply_count = stats.get('reply_count', 0)
+
+        avg_clean = stats.get('avg_clean_chars_per_message', 0)
+        total_clean = stats.get('total_clean_chars', 0)
+
+        image_count = stats.get('element_pic_count', 0)
+        emoji_count = (stats.get('element_face_count', 0) or 0) + (stats.get('element_mface_count', 0) or 0)
+        forward_count = stats.get('element_multiforward_count', 0)
+        file_count = stats.get('element_file_count', 0)
+
         top_words = stats.get('top_words', [])
         max_streak = stats.get('max_streak_days', 0)
         monthly = stats.get('monthly_messages', {})
         
-        # 找出最活跃的时段
-        peak_time = max(time_dist.items(), key=lambda x: x[1])[0] if time_dist else '未知'
+        # 找出最活跃的时段（12段，每段2小时）
+        peak_time = '未知'
+        try:
+            arr = list(time_dist_12) if isinstance(time_dist_12, list) else []
+            if arr:
+                max_idx = max(range(min(12, len(arr))), key=lambda i: (arr[i] or 0))
+                peak_time = f"{max_idx*2:02d}:00-{(max_idx+1)*2:02d}:00"
+        except Exception:
+            peak_time = '未知'
         
         # 找出最活跃的月份
         peak_month = max(monthly.items(), key=lambda x: x[1])[0] if monthly else '未知'
@@ -538,24 +555,30 @@ class AISummarizer:
 请为以下用户生成一份有趣的个人聊天报告：
 
 ## 用户数据
-- **昵称**: {nickname}
-- **QQ号**: {qq}
+- **成员**: {display_name}
+- **uin**: {uin}
+- **uid**: {uid or '-'}
+- **memberNames**: {', '.join(member_names) if member_names else '-'}
+- **nickName**: {nick_name or '-'}
 - **总消息数**: {total_messages} 条
 - **活跃天数**: {active_days} 天
 - **最长连续活跃**: {max_streak} 天
-- **用户类型**: {user_type}
 - **最活跃时段**: {peak_time}
 - **最活跃月份**: {peak_month}
 ## 互动数据
 - **@别人次数**: {at_count} 次
 - **被@次数**: {being_at_count} 次
-- **平均消息长度**: {avg_length:.1f} 字
-- **发送图片**: {image_count} 张
-- **发送表情**: {emoji_count} 个
+- **回复次数**: {reply_count} 次
+- **平均字数(干净文本)**: {avg_clean:.1f} 字
+- **总字数(干净文本)**: {total_clean} 字
+- **图片元素**: {image_count} 个
+- **表情元素**: {emoji_count} 个
+- **转发元素**: {forward_count} 个
+- **文件元素**: {file_count} 个
 ## 热词TOP10
 {hot_words_str}
 ## ⏰ 时段分布
-{json.dumps(time_dist, ensure_ascii=False, indent=2)}
+{json.dumps(time_dist_12, ensure_ascii=False, indent=2)}
 ## 📅 月度消息量
 {json.dumps(monthly, ensure_ascii=False, indent=2)}
 """

@@ -566,6 +566,11 @@ html::before {
     margin-bottom: 24px;
 }
 
+#personal-stats .stats-grid {
+    grid-template-columns: repeat(4, minmax(150px, 1fr));
+    gap: 12px;
+}
+
 .stat-card {
     background: linear-gradient(135deg, rgba(0, 255, 0, 0.1) 0%, rgba(0, 255, 255, 0.1) 100%);
     color: var(--primary-color);
@@ -579,6 +584,9 @@ html::before {
     font-family: 'Courier New', monospace;
 }
 
+    padding: 14px 16px;
+    gap: 10px;
+    min-height: auto;
 .stat-card:hover {
     transform: translateY(-4px);
     box-shadow: 0 0 25px rgba(0, 255, 0, 0.4), 0 0 15px rgba(0, 255, 255, 0.2);
@@ -609,6 +617,16 @@ html::before {
     font-weight: bold;
     color: var(--primary-color);
     text-shadow: 0 0 10px rgba(0, 255, 0, 0.4);
+}
+
+#personal-stats .stat-label {
+    font-size: 11px;
+    letter-spacing: 0.8px;
+    margin-bottom: 6px;
+}
+
+#personal-stats .stat-value {
+    font-size: 20px;
 }
 
 /* ======================================
@@ -1425,6 +1443,24 @@ html::before {
 
     .modal-content {
         width: 95%;
+    }
+}
+
+@media (max-width: 1200px) {
+    #personal-stats .stats-grid {
+        grid-template-columns: repeat(3, minmax(150px, 1fr));
+    }
+}
+
+@media (max-width: 900px) {
+    #personal-stats .stats-grid {
+        grid-template-columns: repeat(2, minmax(150px, 1fr));
+    }
+}
+
+@media (max-width: 640px) {
+    #personal-stats .stats-grid {
+        grid-template-columns: repeat(1, minmax(150px, 1fr));
     }
 }
 

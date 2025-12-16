@@ -644,7 +644,7 @@ async function saveCurrentAnalysis(type) {
     
     if (type === 'personal') {
         qq = document.getElementById('qq-input')?.value || '';
-        nickname = analysisData.nickname || '';
+        nickname = analysisData.display_name || '';
         data = { stats: analysisData };
     } else if (type === 'group') {
         data = { group_stats: analysisData };

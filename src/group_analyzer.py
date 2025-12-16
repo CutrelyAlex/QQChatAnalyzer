@@ -7,9 +7,7 @@ from datetime import datetime
 from typing import Dict, List, Any
 
 from .chat_import.txt_importer import LineData
-from .CutWords import cut_words
-from .RemoveWords import remove_words
-from .utils import parse_timestamp, SYSTEM_QQ_NUMBERS, EMOJI_PATTERN, clean_message_content, has_link
+from .txt_process import cut_words, parse_timestamp, SYSTEM_QQ_NUMBERS, EMOJI_PATTERN, has_link
 
 # 预热 jieba
 import jieba
@@ -157,7 +155,7 @@ class GroupAnalyzer:
                 mentions = []
             mentions = [str(x) for x in mentions if x]
 
-            clean_text = clean_message_content(content)
+            clean_text = content.strip()
 
             line_data = LineData(
                 raw_text=content,
@@ -273,6 +271,9 @@ class GroupAnalyzer:
             if not isinstance(element_counts, dict):
                 element_counts = {}
 
+            is_reply = bool(getattr(line_data, 'reply_to_qq', None)) or msg_type in ('reply', 'KMSGTYPEREPLY')
+            is_forward = msg_type in ('forward', 'KMSGTYPEMULTIMSGFORWARD')
+
             def _n(k: int) -> int:
                 try:
                     return int(element_counts.get(k, 0) or 0)
@@ -287,7 +288,7 @@ class GroupAnalyzer:
                     recalled_by_user[qq] += 1
             if (not is_system) and line_data.mentions:
                 mention_msg_count += 1
-            if msg_type == 'reply' or getattr(line_data, 'reply_to_qq', None):
+            if is_reply:
                 reply_msg_count += 1
 
             # 媒体统计：仅使用 elements + 链接启发式（TXT 没有 link 元素）
@@ -304,7 +305,7 @@ class GroupAnalyzer:
                 media_types.add('video')
             if line_data.has_link:
                 media_types.add('link')
-            if msg_type == 'forward':
+            if is_forward or _n(16) > 0:
                 media_types.add('forward')
 
             if media_types:
@@ -352,9 +353,16 @@ class GroupAnalyzer:
                         emoji_by_user[qq] += max(1, (_n(6) + _n(11)))
                 elif line_data.has_link or msg_type == 'link':
                     link_count += 1
-                elif msg_type in ('forward', 'video', 'audio', 'file', 'redpacket', 'special') or _n(3) > 0 or _n(4) > 0 or _n(5) > 0:
+                elif (
+                    is_forward
+                    or msg_type in ('video', 'audio', 'file', 'redpacket', 'special', 'KMSGTYPEWALLET')
+                    or _n(3) > 0
+                    or _n(4) > 0
+                    or _n(5) > 0
+                    or _n(16) > 0
+                ):
                     forward_count += 1
-                    if qq and msg_type == 'forward':
+                    if qq and is_forward:
                         forward_by_user[qq] += 1
                     if qq and (_n(3) > 0 or msg_type == 'file'):
                         file_by_user[qq] += max(1, _n(3))

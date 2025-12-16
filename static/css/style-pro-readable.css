@@ -170,6 +170,24 @@ html[data-theme="readable"] .tab-button.active {
     text-shadow: none !important;
 }
 
+html[data-theme="readable"] #personal-stats .stats-grid {
+    grid-template-columns: repeat(4, minmax(150px, 1fr));
+    gap: 12px;
+}
+
+html[data-theme="readable"] #personal-stats .stat-card {
+    padding: 14px 16px;
+    gap: 10px;
+}
+
+html[data-theme="readable"] #personal-stats .stat-label {
+    font-size: 11px;
+}
+
+html[data-theme="readable"] #personal-stats .stat-value {
+    font-size: 20px;
+}
+
 /* index_new.html: layout-pro 左侧主功能栏增强（仅易读风格） */
 html[data-theme="readable"] .tabs-container.layout-pro {
     border-radius: 14px !important;
@@ -358,4 +376,22 @@ html[data-theme="readable"] .disclaimer-text {
 /* 网络按钮行：避免被压缩 */
 html[data-theme="readable"] .network-layout-actions {
     gap: 10px !important;
+}
+
+@media (max-width: 1200px) {
+    html[data-theme="readable"] #personal-stats .stats-grid {
+        grid-template-columns: repeat(3, minmax(150px, 1fr));
+    }
+}
+
+@media (max-width: 900px) {
+    html[data-theme="readable"] #personal-stats .stats-grid {
+        grid-template-columns: repeat(2, minmax(150px, 1fr));
+    }
+}
+
+@media (max-width: 640px) {
+    html[data-theme="readable"] #personal-stats .stats-grid {
+        grid-template-columns: repeat(1, minmax(150px, 1fr));
+    }
 }

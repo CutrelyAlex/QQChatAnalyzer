@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from src.config import Config
 from src.chat_import import load_chat_file
@@ -10,6 +11,24 @@ from src.chat_import import load_chat_file
 # texts 目录与允许的输入文件类型
 TEXTS_DIR = Path('texts')
 ALLOWED_SUFFIXES = {'.txt', '.json'}
+
+
+# 进程内缓存：避免同一文件在一次用户会话中被反复解析/适配。
+# key = (filename, options_fingerprint)
+_CONV_CACHE: dict[tuple[str, str], dict[str, Any]] = {}
+
+
+def _freeze_options(options: dict | None) -> str:
+    """把 options 转成稳定的缓存 key（尽量可比较、无需引入额外依赖）。"""
+
+    if not options:
+        return ""
+    try:
+        # 简单稳定序列化：按 key 排序，value 走 repr
+        items = sorted((str(k), repr(v)) for k, v in options.items())
+        return "|".join([f"{k}={v}" for k, v in items])
+    except Exception:
+        return repr(options)
 
 
 def safe_texts_file_path(filename: str) -> Path:
@@ -63,6 +82,14 @@ def load_conversation_and_messages(filename: str, *, options=None):
     if not filepath.exists():
         raise FileNotFoundError('文件不存在')
 
+    # cache hit
+    cache_key = (str(filename), _freeze_options(options))
+    file_mtime = filepath.stat().st_mtime
+    cached = _CONV_CACHE.get(cache_key)
+    if cached and cached.get('mtime') == file_mtime:
+        # 注意：下游应把返回值视为只读；若担心被修改，可在调用处自行 copy。
+        return cached['conv'], cached['messages'], cached['warnings']
+
     result = load_chat_file(str(filepath), options=options)
     conv = result.conversation
 
@@ -85,7 +112,6 @@ def load_conversation_and_messages(filename: str, *, options=None):
     for m in conv.messages:
         time_str = format_time_from_ts_ms(m.timestamp_ms, use_utc=use_utc_time)
 
-        # 系统类事件可能没有 sender，这里用兜底身份承载
         qq = m.sender_participant_id or 'system'
         sender = m.sender_name or pid_to_name.get(qq, qq) or ('系统' if qq == 'system' else qq)
 
@@ -129,5 +155,12 @@ def load_conversation_and_messages(filename: str, *, options=None):
             'reply_to_message_id': reply_to_mid,
             'reply_to_qq': reply_to_qq,
         })
+
+    _CONV_CACHE[cache_key] = {
+        'mtime': file_mtime,
+        'conv': conv,
+        'messages': messages,
+        'warnings': result.warnings,
+    }
 
     return conv, messages, result.warnings

@@ -121,9 +121,10 @@ def prepare_ai_summary_context(data: dict) -> dict:
             raise FileNotFoundError('文件不存在')
 
     # 尽量从原文件加载 messages（用于 chat_sample），缓存缺文件时才回退 chat_sample
+    conv = None
     messages = []
     if filepath is not None and filepath.exists():
-        _conv, messages, _warnings = load_conversation_and_messages(filename)
+        conv, messages, _warnings = load_conversation_and_messages(filename)
 
     # 基于缓存/实时分析得到 stats
     qq = data.get('qq')
@@ -146,8 +147,10 @@ def prepare_ai_summary_context(data: dict) -> dict:
         if summary_type == 'personal':
             if not qq:
                 raise ValueError('个人总结需要指定成员（QQ号/昵称）')
+            if conv is None:
+                conv, messages, _warnings = load_conversation_and_messages(filename)
             analyzer = PersonalAnalyzer()
-            stats = analyzer.get_user_stats_from_messages(messages, qq)
+            stats = analyzer.get_user_stats(conv, str(qq))
             if not stats:
                 raise FileNotFoundError(f'未找到账号 {qq} 的数据')
             stats_dict = stats.to_dict()

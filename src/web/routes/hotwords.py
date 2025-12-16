@@ -1,8 +1,6 @@
 import logging
 
 from flask import jsonify, request
-
-from src.utils import clean_message_content
 from src.web.services.conversation_loader import load_conversation_and_messages, safe_texts_file_path
 
 
@@ -60,7 +58,8 @@ def get_chat_examples():
                     'timestamp': m.get('time', ''),
                     'sender': m.get('sender', ''),
                     'qq': m.get('qq', ''),
-                    'clean_text': clean_message_content(content) if content else '',
+                    # 新结构：导入层已提供 clean_text（message['content']），无需二次清理
+                    'clean_text': content.strip() if content else '',
                 })
             _CHAT_EXAMPLES_CACHE[filename] = {'mtime': file_mtime, 'ver': _CHAT_EXAMPLES_CLEANER_VERSION, 'records': records}
 

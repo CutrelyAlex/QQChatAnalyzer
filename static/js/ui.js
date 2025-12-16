@@ -85,9 +85,18 @@ function drawTimeDistributionChart(timeDistribution) {
     // 销毁旧图表
     if (charts.timeDistribution) charts.timeDistribution.destroy();
     
-    const labels = ['夜间\n(00-06)', '早晨\n(06-09)', '上午\n(09-12)', '中午\n(12-18)', '晚上\n(18-21)', '深夜\n(21-24)'];
-    const keys = ['night', 'early_morning', 'morning', 'afternoon', 'evening', 'night_late'];
-    const data = keys.map(k => timeDistribution[k] || 0);
+    const arr = Array.isArray(timeDistribution) ? timeDistribution : [];
+    const labels = [
+        '00-02', '02-04', '04-06', '06-08', '08-10', '10-12',
+        '12-14', '14-16', '16-18', '18-20', '20-22', '22-24'
+    ];
+    const data = labels.map((_, i) => Number(arr[i] ?? 0) || 0);
+
+    const colors = labels.map((_, i) => {
+        // 12段：用HSL做一个平滑渐变（色相从200→320）
+        const hue = 200 + Math.round((120 * i) / 11);
+        return `hsla(${hue}, 70%, 55%, 0.75)`;
+    });
     
     charts.timeDistribution = new Chart(ctx, {
         type: 'bar',
@@ -96,14 +105,7 @@ function drawTimeDistributionChart(timeDistribution) {
             datasets: [{
                 label: '消息数',
                 data: data,
-                backgroundColor: [
-                    'rgba(25, 33, 71, 0.8)',
-                    'rgba(254, 193, 7, 0.8)',
-                    'rgba(76, 175, 80, 0.8)',
-                    'rgba(33, 150, 243, 0.8)',
-                    'rgba(255, 152, 0, 0.8)',
-                    'rgba(156, 39, 176, 0.8)'
-                ]
+                backgroundColor: colors
             }]
         },
         options: {

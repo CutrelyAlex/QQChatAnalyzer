@@ -67,8 +67,8 @@ async function analyzePersonal() {
         
         hideProgress('personal', true);
         const disp = (typeof formatMemberDisplay === 'function')
-            ? formatMemberDisplay(resolved.member, stats.nickname)
-            : { main: `${stats.nickname} (${stats.qq})`, uidSmall: '' };
+            ? formatMemberDisplay(resolved.member, stats.display_name)
+            : { main: `${stats.display_name || '未知成员'} (${stats.uin || '-'})`, uidSmall: '' };
         showStatusMessage('success', `成功分析 ${disp.main} 的数据`);
     } catch (error) {
         console.error('个人分析失败:', error);
@@ -83,36 +83,51 @@ function displayPersonalStats(stats) {
     document.getElementById('personal-charts').style.display = 'block';
     
     // 更新统计卡片
-    document.getElementById('stat-messages').textContent = stats.total_messages;
-    document.getElementById('stat-active-days').textContent = stats.active_days;
-    document.getElementById('stat-peak-time').textContent = getPeakTimeLabel(stats.time_distribution);
-    document.getElementById('stat-max-streak').textContent = stats.max_streak_days + '天';
-    document.getElementById('stat-at-count').textContent = stats.at_count;
-    document.getElementById('stat-avg-length').textContent = Math.round(stats.avg_message_length) + '字';
+    const setText = (id, value, fallback = '-') => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (value === undefined || value === null || value === '') {
+            el.textContent = fallback;
+            return;
+        }
+        el.textContent = value;
+    };
+
+    setText('stat-display-name', stats.display_name || '-');
+    setText('stat-uin', stats.uin || '-');
+
+    setText('stat-messages', stats.total_messages ?? 0, 0);
+    setText('stat-active-days', stats.active_days ?? 0, 0);
+    setText('stat-peak-time', getPeakTimeLabel(stats.time_distribution_12), '未知');
+    setText('stat-max-streak', (stats.max_streak_days ?? 0) + '天', '0天');
+    setText('stat-at-count', stats.at_count ?? 0, 0);
+    setText('stat-being-at-count', stats.being_at_count ?? 0, 0);
+    setText('stat-reply-count', stats.reply_count ?? 0, 0);
+    setText('stat-avg-length', Math.round(stats.avg_clean_chars_per_message ?? 0) + '字', '0字');
+    setText('stat-total-chars', (stats.total_clean_chars ?? 0).toLocaleString(), '0');
     
     // 绘制图表
-    drawTimeDistributionChart(stats.time_distribution);
+    drawTimeDistributionChart(stats.time_distribution_12);
     drawWeeklyChart(stats.monthly_messages);
     
     // 渲染热词云
     if (stats.top_words && stats.top_words.length > 0) {
         renderHotWords('personal-hot-words', stats.top_words);
     }
-        const setIfExists = (id, value, fallback = 0) => {
-            const el = document.getElementById(id);
-            if (!el) return;
-            if (value === undefined || value === null || Number.isNaN(value)) {
-                el.textContent = fallback;
-                return;
-            }
-            el.textContent = value;
-        };
 
-        setIfExists('stat-image-count', stats.image_count ?? stats.images_count ?? 0);
-        setIfExists('stat-emoji-count', stats.emoji_count ?? 0);
-        setIfExists('stat-forward-count', stats.forward_count ?? 0);
-        setIfExists('stat-file-count', stats.file_count ?? 0);
-        setIfExists('stat-recall-count', stats.recall_count ?? 0);
+    // ElementType / 结构化事件
+    const pic = Number(stats.element_pic_count ?? 0) || 0;
+    const file = Number(stats.element_file_count ?? 0) || 0;
+    const forward = Number(stats.element_multiforward_count ?? 0) || 0;
+    const emoji = (Number(stats.element_face_count ?? 0) || 0) + (Number(stats.element_mface_count ?? 0) || 0);
+
+    setText('stat-image-count', pic, 0);
+    setText('stat-file-count', file, 0);
+    setText('stat-forward-count', forward, 0);
+    setText('stat-emoji-count', emoji, 0);
+    setText('stat-link-count', stats.link_count ?? 0, 0);
+    setText('stat-system-count', stats.system_count ?? 0, 0);
+    setText('stat-recall-count', stats.recall_count ?? 0, 0);
 }
 
 async function analyzeGroup() {
@@ -367,28 +382,24 @@ async function analyzeNetwork() {
 
 // ============ 辅助函数 ============
 
-function getPeakTimeLabel(timeDistribution) {
-    // """获取高峰时段标签"""
-    const times = {
-        'night': '夜间(00-06)',
-        'early_morning': '早晨(06-09)',
-        'morning': '上午(09-12)',
-        'afternoon': '中午(12-18)',
-        'evening': '晚上(18-21)',
-        'night_late': '深夜(21-24)'
-    };
-    
-    let maxTime = 'afternoon';
-    let maxCount = 0;
-    
-    for (const [time, count] of Object.entries(timeDistribution)) {
-        if (count > maxCount) {
-            maxCount = count;
-            maxTime = time;
+function getPeakTimeLabel(timeDistribution12) {
+    // """获取高峰时段标签（12段，每段2小时）"""
+    const arr = Array.isArray(timeDistribution12) ? timeDistribution12 : [];
+    let maxIdx = 0;
+    let maxCount = -1;
+
+    for (let i = 0; i < 12; i++) {
+        const c = Number(arr[i] ?? 0) || 0;
+        if (c > maxCount) {
+            maxCount = c;
+            maxIdx = i;
         }
     }
-    
-    return times[maxTime] || '未知';
+
+    const start = maxIdx * 2;
+    const end = (maxIdx + 1) * 2;
+    const pad = (n) => n.toString().padStart(2, '0');
+    return `${pad(start)}:00-${pad(end)}:00`;
 }
 
 // ============ 新增：时段分析渲染函数 ============

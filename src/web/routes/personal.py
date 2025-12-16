@@ -52,10 +52,10 @@ def get_personal_analysis(qq):
 
         logger.info(f"Analyzing personal stats for {qq} from {filename}")
 
-        _conv, messages, _warnings = load_conversation_and_messages(filename)
+        conv, messages, _warnings = load_conversation_and_messages(filename)
 
         analyzer = PersonalAnalyzer()
-        stats = analyzer.get_user_stats_from_messages(messages, qq)
+        stats = analyzer.get_user_stats(conv, str(qq))
 
         if not stats:
             return jsonify({'success': False, 'error': f'未找到QQ {qq} 的数据'}), 404

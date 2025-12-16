@@ -6,131 +6,6 @@
     <title>QQ聊天记录分析系统</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style-pro-readable.css') }}">
-
-    <!-- Pro layout (scoped). This does NOT change JS logic: it only rearranges the existing tabs into a left sidebar. -->
-    <style>
-        .tabs-container.layout-pro {
-            display: flex;
-            flex-direction: row;
-            align-items: stretch;
-        }
-
-        .tabs-container.layout-pro .tabs-header {
-            flex: 0 0 240px;
-            display: flex;
-            flex-direction: column;
-            flex-wrap: nowrap;
-            border-bottom: none;
-            border-right: 2px solid var(--accent-cyan);
-            background-color: rgba(0, 0, 0, 0.22);
-            padding: 10px 0;
-            position: sticky;
-            top: 88px;
-            height: calc(100vh - 120px);
-            overflow-y: auto;
-            overscroll-behavior: contain;
-        }
-
-        .tabs-container.layout-pro .tabs-header .sidebar-title {
-            padding: 12px 16px;
-            font-size: 12px;
-            letter-spacing: 1px;
-            opacity: 0.9;
-            user-select: none;
-            color: var(--accent-cyan);
-            text-transform: uppercase;
-        }
-
-        .tabs-container.layout-pro .tab-button {
-            flex: 0 0 auto;
-            min-width: 0;
-            width: 100%;
-            text-align: left;
-            border-bottom: 1px solid rgba(0, 255, 255, 0.12);
-            border-left: 3px solid transparent;
-            border-bottom-left-radius: 0;
-            border-bottom-right-radius: 0;
-            padding: 12px 16px;
-        }
-
-        .tabs-container.layout-pro .tab-button.active {
-            border-left-color: var(--primary-color);
-            border-bottom-color: rgba(0, 255, 255, 0.18);
-        }
-
-        .tabs-container.layout-pro .tabs-content {
-            flex: 1;
-            min-width: 0;
-        }
-
-        /* Sub-tabs: UI scaffolding only. Not wired to JS yet (planned feature). */
-        .subtabs {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin: 10px 0 18px;
-            padding-bottom: 12px;
-            border-bottom: 1px solid rgba(0, 255, 255, 0.18);
-        }
-
-        .subtab {
-            padding: 8px 10px;
-            border: 1px solid rgba(0, 255, 255, 0.35);
-            background: rgba(0, 255, 255, 0.08);
-            color: var(--accent-cyan);
-            font-size: 12px;
-            font-family: 'Courier New', monospace;
-            letter-spacing: 0.5px;
-            cursor: default;
-            user-select: none;
-        }
-
-        .subtab.is-active {
-            border-color: var(--primary-color);
-            color: var(--primary-color);
-            background: rgba(0, 255, 0, 0.08);
-        }
-
-        .subtab.is-disabled {
-            opacity: 0.55;
-        }
-
-        @media (max-width: 980px) {
-            .tabs-container.layout-pro {
-                flex-direction: column;
-            }
-
-            .tabs-container.layout-pro .tabs-header {
-                position: static;
-                top: auto;
-                height: auto;
-                flex-direction: row;
-                border-right: none;
-                border-bottom: 2px solid var(--accent-cyan);
-                overflow-x: auto;
-                overflow-y: hidden;
-                padding: 0;
-            }
-
-            .tabs-container.layout-pro .tabs-header .sidebar-title {
-                display: none;
-            }
-
-            .tabs-container.layout-pro .tab-button {
-                width: auto;
-                border-left: none;
-                border-bottom: 3px solid transparent;
-                min-width: 120px;
-                text-align: center;
-            }
-
-            .tabs-container.layout-pro .tab-button.active {
-                border-left: none;
-                border-bottom-color: var(--primary-color);
-            }
-        }
-    </style>
-
     <!-- Chart.js用于绘制图表 -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
     <!-- vis.js用于社交网络可视化 -->
@@ -202,8 +77,8 @@
                     </div>
                     <div class="tab-body">
                         <div class="input-group">
-                            <label for="qq-input">QQ号/昵称:</label>
-                            <input type="text" id="qq-input" placeholder="输入QQ号或昵称（支持模糊匹配），或从下拉选择" list="qq-list">
+                            <label for="qq-input">成员查询:</label>
+                            <input type="text" id="qq-input" placeholder="输入：uin/uid/成员ID/昵称（支持模糊匹配），或从下拉选择" list="qq-list">
                             <datalist id="qq-list"></datalist>
                             <button id="personal-analyze-btn" class="btn btn-primary" disabled>
                                 分析个人
@@ -219,7 +94,21 @@
                         </div>
 
                         <div id="personal-stats" class="stats-container" style="display: none;">
-                            <div class="stats-grid">
+                            <div class="stats-grid stats-grid--row">
+                                <div class="stat-card">
+                                    <div class="stat-icon">👤</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">成员</div>
+                                        <div class="stat-value" id="stat-display-name">-</div>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">🔑</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">uin</div>
+                                        <div class="stat-value" id="stat-uin">-</div>
+                                    </div>
+                                </div>
                                 <div class="stat-card">
                                     <div class="stat-icon">💬</div>
                                     <div class="stat-content">
@@ -256,41 +145,82 @@
                                     </div>
                                 </div>
                                 <div class="stat-card">
+                                    <div class="stat-icon">🏷️</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">被@次数</div>
+                                        <div class="stat-value" id="stat-being-at-count">-</div>
+                                    </div>
+                                </div>
+
+                                <div class="stat-card">
+                                    <div class="stat-icon">↩️</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">回复次数</div>
+                                        <div class="stat-value" id="stat-reply-count">-</div>
+                                    </div>
+                                </div>
+
+                                <div class="stat-card">
                                     <div class="stat-icon">📝</div>
                                     <div class="stat-content">
-                                        <div class="stat-label">平均消息长度</div>
+                                        <div class="stat-label">平均字数(干净)</div>
                                         <div class="stat-value" id="stat-avg-length">-</div>
+                                    </div>
+                                </div>
+
+                                <div class="stat-card">
+                                    <div class="stat-icon">🔤</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">总字数(干净)</div>
+                                        <div class="stat-value" id="stat-total-chars">-</div>
                                     </div>
                                 </div>
 
                                 <div class="stat-card">
                                     <div class="stat-icon">🖼️</div>
                                     <div class="stat-content">
-                                        <div class="stat-label">图片数</div>
+                                        <div class="stat-label">图片元素</div>
                                         <div class="stat-value" id="stat-image-count">-</div>
                                     </div>
                                 </div>
                                 <div class="stat-card">
                                     <div class="stat-icon">😄</div>
                                     <div class="stat-content">
-                                        <div class="stat-label">表情包数</div>
+                                        <div class="stat-label">表情元素</div>
                                         <div class="stat-value" id="stat-emoji-count">-</div>
                                     </div>
                                 </div>
                                 <div class="stat-card">
                                     <div class="stat-icon">🔁</div>
                                     <div class="stat-content">
-                                        <div class="stat-label">转发数</div>
+                                        <div class="stat-label">转发元素</div>
                                         <div class="stat-value" id="stat-forward-count">-</div>
                                     </div>
                                 </div>
                                 <div class="stat-card">
                                     <div class="stat-icon">📎</div>
                                     <div class="stat-content">
-                                        <div class="stat-label">文件数</div>
+                                        <div class="stat-label">文件元素</div>
                                         <div class="stat-value" id="stat-file-count">-</div>
                                     </div>
                                 </div>
+
+                                <div class="stat-card">
+                                    <div class="stat-icon">🔗</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">链接次数</div>
+                                        <div class="stat-value" id="stat-link-count">-</div>
+                                    </div>
+                                </div>
+
+                                <div class="stat-card">
+                                    <div class="stat-icon">🧾</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">系统事件</div>
+                                        <div class="stat-value" id="stat-system-count">-</div>
+                                    </div>
+                                </div>
+
                                 <div class="stat-card">
                                     <div class="stat-icon">↩️</div>
                                     <div class="stat-content">
@@ -307,7 +237,7 @@
                                 <canvas id="time-dist-chart"></canvas>
                             </div>
                             <div class="chart-container">
-                                <h3>周发言趋势</h3>
+                                <h3>月发言趋势</h3>
                                 <canvas id="weekly-chart"></canvas>
                             </div>
                             <div class="chart-container">

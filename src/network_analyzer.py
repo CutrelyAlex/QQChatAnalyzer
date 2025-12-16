@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import re
 
-from .utils import parse_timestamp
+from .txt_process import parse_timestamp
 
 
 class NetworkStats:
@@ -315,9 +315,8 @@ class NetworkAnalyzer:
                 continue
             qq = msg.get('qq', '')
             content = msg.get('content', '').strip()
-            # 非文本消息不参与“内容相似性”
-            mt = str(msg.get('message_type') or 'text')
-            if mt not in ('text', 'reply') and not content:
+            # 无内容的消息不参与“内容相似性”（媒体/系统提示等通常 content 为空）
+            if not content:
                 continue
             if qq and content and len(content) > 2:  # 过滤太短的消息
                 user_contents[qq].append(content)
