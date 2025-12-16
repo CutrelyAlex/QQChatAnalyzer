@@ -11,7 +11,6 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, Optional
 
-from .core import DedupTracker, dedup_key
 from .importers import load_conversation_from_json, load_conversation_from_txt
 from .schema import Conversation, LoadResult
 
@@ -26,7 +25,6 @@ def _compute_time_range(conversation: Conversation) -> None:
 
 def load_chat_file(file_path: str, options: Optional[Dict[str, Any]] = None) -> LoadResult:
     options = options or {}
-    # 过滤（例如排除系统/撤回）不在导入层做：由热词/上层分析逻辑负责
 
     ext = os.path.splitext(file_path)[1].lower()
 
@@ -39,21 +37,7 @@ def load_chat_file(file_path: str, options: Optional[Dict[str, Any]] = None) -> 
 
     conversation.message_count_raw = len(conversation.messages)
 
-    # 去重
-    tracker = DedupTracker()
-    deduped = []
-    for m in conversation.messages:
-        if tracker.is_duplicate(m):
-            continue
-
-        # 回填内部 id
-        _tier, key = dedup_key(m)
-        m.id = key
-        deduped.append(m)
-
-    conversation.messages = deduped
-    conversation.message_count_deduped = len(deduped)
-    conversation.dedup_stats = tracker.stats
+    conversation.message_count_deduped = conversation.message_count_raw
 
     _compute_time_range(conversation)
 

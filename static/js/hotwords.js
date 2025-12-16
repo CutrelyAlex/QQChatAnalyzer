@@ -104,17 +104,17 @@ function filterMentionedNames(hotWords) {
         let w = (word?.word || '').toString();
         if (!w) return false;
 
-        // 1) 去掉首尾空白
+        // 去掉首尾空白
         w = w.trim();
 
-        // 2) 去掉常见的零宽字符（有些导出/分词会带这些）
+        // 去掉常见的零宽字符
         w = w.replace(/^[\u200B-\u200D\uFEFF\u2060]+/g, '');
 
-        // 3) 去掉开头的括号/书名号/全角括号等，再检测一次
+        // 去掉开头的括号/书名号/全角括号等，再检测一次
         const w2 = w.replace(/^[\s\(\[\{\uFF08\u3010\u300A\u3008<]+/g, '')
             .replace(/^[\u200B-\u200D\uFEFF\u2060]+/g, '');
 
-        // 过滤 @mentions：支持半角 @ 与全角 ＠
+        // 过滤 @mentions
         if (w.startsWith('@') || w.startsWith('＠') || w2.startsWith('@') || w2.startsWith('＠')) {
             return false;
         }

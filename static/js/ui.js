@@ -212,7 +212,8 @@ function drawMemberRankingChart(memberMessageCount) {
         .sort((a, b) => b.count - a.count)
         .slice(0, 10);
     
-    // 使用“最新昵称”作为标签：优先后端提供的 name，其次用 memberIndex 里的最新昵称，最后才显示 QQ
+    // 使用最新昵称作为标签
+    // 优先后端提供的 name，其次用 memberIndex 里的最新昵称，最后显示 QQ
     const labels = sorted.map(item => {
         const fromStats = (item.name || '').toString().trim();
         const fromIndex = (typeof appState !== 'undefined')

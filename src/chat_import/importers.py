@@ -14,15 +14,15 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from .core import extract_sender_identity, merge_display_name, participant_id_from_uid_uin
+from .core import extract_sender_identity, merge_display_name
 from .schema import Conversation, Mention, Message, Participant, ReplyReference, safe_int
+from .txt_importer import load_conversation_from_txt
 from ..config import Config
 
 
 # -------------------------
 # JSON：QQChatExporter V4
 # -------------------------
-
 
 def _norm_name(v: Any) -> Optional[str]:
     if v is None:
@@ -36,7 +36,6 @@ def _looks_like_number(s: Optional[str]) -> bool:
         return False
     s2 = s.strip()
     return s2.isdigit()
-
 
 def _extract_sender_names_from_raw_message(raw_message: Optional[Dict[str, Any]]) -> Tuple[Optional[str], Optional[str]]:
     """按当前 exporter JSON 的结构提取名字：
@@ -52,40 +51,6 @@ def _extract_sender_names_from_raw_message(raw_message: Optional[Dict[str, Any]]
     nick_name = _norm_name(raw_message.get("sendNickName"))
 
     return member_name, nick_name
-
-
-def _extract_nickname_from_statistics_senders(statistics: Any) -> Dict[str, Tuple[int, str]]:
-    """从 root.statistics.senders 中抽取 uid -> name 的映射（仅做留存/兜底）。
-
-    约定：
-    - senders 里可能出现 {uid: 纯数字, name: "0"} 的系统占位发送者，需跳过
-    - 这里的 name 是 QQ 名称（不是群昵称）
-    """
-
-    out: Dict[str, Tuple[int, str]] = {}
-    if not isinstance(statistics, dict):
-        return out
-
-    senders = statistics.get("senders")
-    if not isinstance(senders, list):
-        return out
-
-    for it in senders:
-        if not isinstance(it, dict):
-            continue
-        uid = _norm_name(it.get("uid"))
-        name = _norm_name(it.get("name"))
-        if not uid or not name:
-            continue
-        if name == "0" and _looks_like_number(uid):
-            continue
-
-        # participant_id 在本项目中约定等同于 uid/uin 字符串
-        pid = participant_id_from_uid_uin(uid=uid)
-        out[pid] = (2, name)
-
-    return out
-
 
 def _parse_timestamp_ms(value: Any) -> Optional[int]:
     """把导出时间戳统一为 epoch ms。
@@ -152,51 +117,6 @@ def _parse_timestamp_ms(value: Any) -> Optional[int]:
     return None
 
 
-def _detect_system_and_recall_from_raw_message(raw_message: Any) -> Tuple[bool, bool]:
-    """从 exporter 的 rawMessage 中推断系统事件/撤回。
-
-    说明：在当前导出 JSON 中，顶层字段可能为：
-    - isSystemMessage=false
-    - isRecalled=false
-    但真实的“灰条提示/撤回”会出现在 rawMessage.elements[].grayTipElement 中，
-    或通过 rawMessage.msgType/subMsgType 表达。
-
-    返回： (is_system, is_recalled)
-    """
-
-    if not isinstance(raw_message, dict):
-        return False, False
-
-    is_system = False
-    is_recalled = False
-
-    msg_type = safe_int(raw_message.get("msgType"))
-    sub_msg_type = safe_int(raw_message.get("subMsgType"))
-
-    # msgType=5 是灰条/系统类（包含撤回、入群提示等）
-    if msg_type == 5:
-        is_system = True
-        # subMsgType=4 为撤回提示
-        if sub_msg_type == 4:
-            is_recalled = True
-
-    elements = raw_message.get("elements")
-    if isinstance(elements, list):
-        for el in elements:
-            if not isinstance(el, dict):
-                continue
-            gray = el.get("grayTipElement")
-            if not isinstance(gray, dict):
-                continue
-            # grayTip 视为系统类事件
-            is_system = True
-            # revokeElement 存在即为撤回提示
-            if isinstance(gray.get("revokeElement"), dict):
-                is_recalled = True
-
-    return is_system, is_recalled
-
-
 def _append_unique_history(history: tuple[str, ...], name: Optional[str]) -> tuple[str, ...]:
     name = _norm_name(name)
     if not name:
@@ -208,7 +128,7 @@ def _append_unique_history(history: tuple[str, ...], name: Optional[str]) -> tup
 
 def _parse_elements(
     raw_message: Optional[Dict[str, Any]],
-) -> Tuple[Dict[int, int], str, List[Mention], Optional[ReplyReference], Optional[int], Optional[str], Optional[str], Optional[str]]:
+) -> Tuple[Dict[int, int], str, List[Mention], Optional[ReplyReference], Optional[int], Optional[str], Optional[str]]:
     """解析 rawMessage.elements。
 
     返回：
@@ -217,7 +137,6 @@ def _parse_elements(
     - mentions: TEXT 且 atType!=0 的 atUid(UIN)/atNtUid(uid)
     - reply_to: REPLY(elementType=7) 的关键字段
     - graytip_subtype: 系统灰条子类型（如存在）
-    - graytip_xml_busi_type: 系统灰条 xmlElement.busiType（如存在）
     - recall_operator_uid / recall_operator_uin: 撤回操作者（如存在）
     """
 
@@ -226,16 +145,15 @@ def _parse_elements(
     mentions: List[Mention] = []
     reply_to: Optional[ReplyReference] = None
     graytip_subtype: Optional[int] = None
-    graytip_xml_busi_type: Optional[str] = None
     recall_operator_uid: Optional[str] = None
     recall_operator_uin: Optional[str] = None
 
     if not isinstance(raw_message, dict):
-        return element_counts, "", mentions, reply_to, graytip_subtype, graytip_xml_busi_type, recall_operator_uid, recall_operator_uin
+        return element_counts, "", mentions, reply_to, graytip_subtype, recall_operator_uid, recall_operator_uin
 
     elements = raw_message.get("elements")
     if not isinstance(elements, list):
-        return element_counts, "", mentions, reply_to, graytip_subtype, graytip_xml_busi_type, recall_operator_uid, recall_operator_uin
+        return element_counts, "", mentions, reply_to, graytip_subtype, recall_operator_uid, recall_operator_uin
 
     for el in elements:
         if not isinstance(el, dict):
@@ -285,7 +203,7 @@ def _parse_elements(
             source_sender_uin = _norm_name(re.get("senderUid"))
             source_sender_uid = _norm_name(re.get("senderUidStr"))
 
-            # 从 sourceMsgTextElems 提取一段可读摘要（不做截断存储）
+            # 从 sourceMsgTextElems 提取一段可读摘要
             snippet = None
             elems = re.get("sourceMsgTextElems")
             if isinstance(elems, list):
@@ -319,19 +237,10 @@ def _parse_elements(
                 st = safe_int(gray.get("subElementType"))
                 if st is not None:
                     graytip_subtype = st
-                xml = gray.get("xmlElement")
-                if isinstance(xml, dict):
-                    bt = xml.get("busiType")
-                    if bt is not None and not isinstance(bt, str):
-                        bt = str(bt)
-                    if bt:
-                        graytip_xml_busi_type = bt
-
                 revoke = gray.get("revokeElement")
                 if isinstance(revoke, dict):
                     recall_operator_uid = _norm_name(revoke.get("operatorUid"))
                     recall_operator_uin = _norm_name(revoke.get("operatorUin"))
-                    # 部分情况下只有 operatorNick，没有 uin；不强求
 
     clean_text = "".join(clean_parts).strip()
     return (
@@ -340,7 +249,6 @@ def _parse_elements(
         mentions,
         reply_to,
         graytip_subtype,
-        graytip_xml_busi_type,
         recall_operator_uid,
         recall_operator_uin,
     )
@@ -457,9 +365,9 @@ def load_conversation_from_json(file_path: str) -> Tuple[Conversation, List[str]
         }
         sender_ident = extract_sender_identity(merged_sender)
 
-        raw_is_system, raw_is_recalled = _detect_system_and_recall_from_raw_message(raw_message)
-        is_system = bool(m.get("isSystemMessage", False)) or raw_is_system
-        is_recalled = bool(m.get("isRecalled", False)) or raw_is_recalled
+        # 当前 JSON 顶层字段可信：不再从 rawMessage 推断系统/撤回
+        is_system = bool(m.get("isSystemMessage", False))
+        is_recalled = bool(m.get("isRecalled", False))
 
         # 系统占位 sender：uid=纯数字 且 name="0"（跳过参与者入表；消息 sender 也用 None 兜底）
         is_system_sender_zero = (
@@ -533,7 +441,6 @@ def load_conversation_from_json(file_path: str) -> Tuple[Conversation, List[str]
             mentions,
             reply_to,
             graytip_subtype,
-            graytip_xml_busi_type,
             recall_operator_uid,
             recall_operator_uin,
         ) = _parse_elements(raw_message)
@@ -577,7 +484,6 @@ def load_conversation_from_json(file_path: str) -> Tuple[Conversation, List[str]
             message_type=message_type,
             nt_msg_type=nt_msg_type,
             graytip_subtype=graytip_subtype,
-            graytip_xml_busi_type=graytip_xml_busi_type,
             recall_operator_uid=recall_operator_uid,
             recall_operator_uin=recall_operator_uin,
             text=clean_text,
@@ -607,82 +513,5 @@ def load_conversation_from_json(file_path: str) -> Tuple[Conversation, List[str]
     for msg in conv.messages:
         if msg.sender_participant_id and msg.sender_participant_id in pid_to_name:
             msg.sender_name = pid_to_name[msg.sender_participant_id]
-
-    return conv, warnings
-
-
-# -------------------------
-# TXT：文本格式
-# -------------------------
-
-
-def load_conversation_from_txt(file_path: str) -> Tuple[Conversation, List[str]]:
-    """把旧 TXT 转换为归一化 Conversation。
-
-    说明：这里复用现有解析逻辑，尽量不改变旧语义。
-    """
-
-    from ..LineProcess import process_lines_data
-    from ..utils import parse_timestamp
-
-    warnings: List[str] = []
-
-    _all_lines, all_lines_data, _qq_to_name_map = process_lines_data(file_path, mode="all")
-
-    conversation_id = f"txt:{os.path.basename(file_path)}"
-    title = os.path.basename(file_path)
-    conv = Conversation(conversation_id=conversation_id, type="unknown", title=title)
-
-    participants_by_id: Dict[str, Participant] = {}
-
-    for idx, ld in enumerate(all_lines_data):
-        ts_ms = 0
-        try:
-            dt = parse_timestamp(ld.timepat)
-            if dt:
-                ts_ms = int(dt.timestamp() * 1000)
-        except Exception:
-            ts_ms = 0
-
-        participant_id = participant_id_from_uid_uin(uin=ld.qq, fallback_name=ld.sender)
-
-        if participant_id not in participants_by_id:
-            participants_by_id[participant_id] = Participant(
-                participant_id=participant_id,
-                uin=str(ld.qq) if ld.qq else None,
-                uid=None,
-                display_name=ld.sender or (ld.qq or "unknown"),
-            )
-
-        # TXT importer 只保留文本与 mentions；媒体/链接由旧分析器自行启发式判断
-
-        mentions: List[Mention] = []
-        for m in ld.mentions or []:
-            mentions.append(Mention(target_participant_id=participant_id_from_uid_uin(uin=m), target_name=str(m), target_uin=str(m)))
-
-        msg = Message(
-            id=f"tmp:{idx}",
-            message_id=None,
-            message_seq=None,
-            msg_random=None,
-            conversation_id=conversation_id,
-            timestamp_ms=ts_ms,
-            sender_participant_id=participant_id,
-            sender_name=ld.sender,
-            is_system=False,
-            is_recalled=bool(ld.is_recall),
-            message_type=ld.get_message_type(),
-            text=ld.raw_text or "",
-            mentions=mentions,
-        )
-        conv.messages.append(msg)
-
-    conv.participants = list(participants_by_id.values())
-    conv.message_count_raw = len(conv.messages)
-
-    if len(conv.participants) == 2:
-        conv.type = "private"
-    elif len(conv.participants) > 2:
-        conv.type = "group"
 
     return conv, warnings

@@ -13,9 +13,6 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Tuple, Any, Optional
 import math
 
-from .LineProcess import process_lines_data
-
-
 class DataPruner:
     """
     数据修剪器 - 智能Token管理和数据稀疏切割
@@ -65,36 +62,6 @@ class DataPruner:
             self.total_messages += 1
         
         # 计算总token估算
-        self.total_tokens_estimate = self._estimate_total_tokens()
-    
-    def load_from_lines(self, lines: List[str], lines_data: List[Any]) -> None:
-        """
-        从LineProcess的输出加载消息
-        
-        Args:
-            lines: 原始文本行
-            lines_data: LineData对象列表
-        """
-        self.messages_by_date.clear()
-        self.total_messages = 0
-        
-        for line_data in lines_data:
-            time_str = line_data.timepat if hasattr(line_data, 'timepat') else ''
-            content = line_data.raw_text if hasattr(line_data, 'raw_text') else str(line_data)
-            
-            try:
-                date_str = time_str[:10] if len(time_str) >= 10 else 'unknown'
-            except:
-                date_str = 'unknown'
-            
-            self.messages_by_date[date_str].append({
-                'time': time_str,
-                'content': content,
-                'qq': getattr(line_data, 'qq', ''),
-                'sender': getattr(line_data, 'sender', '')
-            })
-            self.total_messages += 1
-        
         self.total_tokens_estimate = self._estimate_total_tokens()
 
     def _format_message_for_estimate(self, msg: Dict[str, Any]) -> str:
@@ -372,47 +339,3 @@ class DataPruner:
             lines.append(' '.join(parts))
         
         return '\n'.join(lines)
-
-
-# 快捷函数
-def estimate_file_tokens(filepath: str, max_tokens: int = 100000) -> Dict[str, Any]:
-    """
-    快速估算文件的token数
-    
-    Args:
-        filepath: 文件路径
-        max_tokens: 最大token限制
-    
-    Returns:
-        Token估算结果
-    """
-    lines, lines_data, _ = process_lines_data(filepath, mode='all')
-    
-    pruner = DataPruner(max_tokens)
-    pruner.load_from_lines(lines, lines_data)
-    
-    return pruner.estimate_tokens()
-
-
-def prune_file_for_ai(filepath: str, max_tokens: int = 100000, 
-                      strategy: str = 'uniform') -> Tuple[str, Dict[str, Any]]:
-    """
-    修剪文件数据以适应AI的token限制
-    
-    Args:
-        filepath: 文件路径
-        max_tokens: 最大token限制
-        strategy: 修剪策略
-    
-    Returns:
-        (formatted_text, pruning_info)
-    """
-    lines, lines_data, _ = process_lines_data(filepath, mode='all')
-    
-    pruner = DataPruner(max_tokens)
-    pruner.load_from_lines(lines, lines_data)
-    
-    pruned_messages, info = pruner.prune(strategy)
-    formatted_text = pruner.format_messages_for_ai(pruned_messages)
-    
-    return formatted_text, info

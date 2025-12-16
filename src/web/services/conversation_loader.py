@@ -56,63 +56,6 @@ def parse_bool_query(value: str | None, *, default: bool = False) -> bool:
     return default
 
 
-def legacy_placeholders_for_message(message_type: str, resource_types: list[str] | None, *, is_recalled: bool) -> str:
-    """为旧分析器生成可读占位符。"""
-
-    if is_recalled:
-        return '撤回了一条消息'
-
-    rt = [str(x) for x in (resource_types or []) if x]
-    tokens: list[str] = []
-
-    # 旧的
-    if 'image' in rt:
-        tokens.append('[图片]')
-    if 'emoji' in rt or 'sticker' in rt:
-        tokens.append('[表情]')
-
-    # 新类型占位
-    for t in rt:
-        if t in ('image', 'emoji', 'sticker'):
-            continue
-        tokens.append(f'[{t}]')
-
-    if not tokens and message_type and message_type not in ('text', 'unknown'):
-        tokens.append(f'[{message_type}]')
-
-    return ' '.join(tokens).strip()
-
-
-def _resource_types_from_element_counts(element_counts: dict | None) -> list[str]:
-    """从 element_counts 推断资源类型列表（用于旧分析器/前端占位符）。
-
-    ElementType（来自 QQChatExporter V4）：
-    - 2: 图片 -> image
-    - 3: 文件 -> file
-    - 4: 语音 -> audio
-    - 5: 视频 -> video
-    - 6/11: 表情 -> emoji/sticker（这里统一记为 emoji）
-    """
-
-    if not isinstance(element_counts, dict):
-        return []
-
-    def _n(k: int) -> int:
-        try:
-            return int(element_counts.get(k, 0) or 0)
-        except Exception:
-            return 0
-
-    out: list[str] = []
-    out += ['image'] * _n(2)
-    out += ['file'] * _n(3)
-    out += ['audio'] * _n(4)
-    out += ['video'] * _n(5)
-    # 这里不区分 sticker/emoji，保持简单
-    out += ['emoji'] * (_n(6) + _n(11))
-    return out
-
-
 def load_conversation_and_messages(filename: str, *, options=None):
     """从 texts/ 加载归一化会话，并返回适配现有分析/AI 的消息字典列表。"""
     options = options or {}
@@ -146,8 +89,6 @@ def load_conversation_and_messages(filename: str, *, options=None):
         qq = m.sender_participant_id or 'system'
         sender = m.sender_name or pid_to_name.get(qq, qq) or ('系统' if qq == 'system' else qq)
 
-        resource_types = _resource_types_from_element_counts(getattr(m, 'element_counts', None))
-
         mention_targets = []
         for it in (m.mentions or []):
             try:
@@ -169,15 +110,8 @@ def load_conversation_and_messages(filename: str, *, options=None):
         reply_to_qq = message_id_to_sender.get(reply_to_mid) if reply_to_mid else None
 
         content = m.text or ''
-        if not content:
-            content = legacy_placeholders_for_message(
-                m.message_type,
-                resource_types,
-                is_recalled=bool(m.is_recalled),
-            )
 
         messages.append({
-            # legacy fields（现有分析器/AI/预览依赖）
             'time': time_str,
             'sender': sender,
             'qq': str(qq),
@@ -189,7 +123,7 @@ def load_conversation_and_messages(filename: str, *, options=None):
             'is_system': bool(m.is_system),
             'is_recalled': bool(m.is_recalled),
             'message_type': str(m.message_type or 'unknown'),
-            'resource_types': resource_types,
+            'element_counts': dict(getattr(m, 'element_counts', None) or {}),
             'mention_count': int(len(mention_targets)),
             'mentions': mention_targets,
             'reply_to_message_id': reply_to_mid,

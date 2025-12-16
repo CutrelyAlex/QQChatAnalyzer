@@ -12,7 +12,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import re
 
-from .LineProcess import process_lines_data
 from .utils import parse_timestamp
 
 
@@ -136,26 +135,6 @@ class NetworkAnalyzer:
                 continue
             if qq and sender and qq not in self.qq_to_name:
                 self.qq_to_name[qq] = sender
-    
-    def load_messages_from_file(self, filepath: str) -> None:
-        """
-        从文件加载消息并预处理
-        
-        Args:
-            filepath: 聊天记录文件路径
-        """
-        all_lines, all_lines_data, qq_to_name_map = process_lines_data(filepath, mode='all')
-        self.qq_to_name = qq_to_name_map
-        
-        # 转换 LineData 为消息字典格式
-        self.messages = []
-        for line_data in all_lines_data:
-            self.messages.append({
-                'time': line_data.timepat,
-                'qq': line_data.qq,
-                'sender': line_data.sender,
-                'content': line_data.raw_text
-            })
 
     def analyze(self) -> NetworkStats:
         """

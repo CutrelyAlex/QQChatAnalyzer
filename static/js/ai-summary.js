@@ -6,8 +6,6 @@
 // ============ AI总结 ============
 
 function getAiGenerationParams() {
-    // 统一从 AI 配置页（window.aiConfig）读取；若未初始化则回退 localStorage
-    // 后端接受 temperature (0-2) 与 top_p (0-1)
     const cfg = (typeof window !== 'undefined' && window.aiConfig) ? window.aiConfig : null;
     const temperature = (cfg && typeof cfg.temperature === 'number')
         ? cfg.temperature

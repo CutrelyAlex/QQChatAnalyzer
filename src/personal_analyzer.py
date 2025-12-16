@@ -106,94 +106,6 @@ class PersonalAnalyzer:
     def __init__(self):
         # 使用 RemoveWords 作为停用词
         self.stopwords = set(remove_words)
-    
-    def analyze_file(self, filepath, qq_list=None):
-        """
-        分析聊天记录文件
-
-        Args:
-            filepath: 文件路径
-            qq_list: 要分析的QQ号列表，如果为None则分析所有
-
-        Returns:
-            {qq: PersonalStats}
-        """
-        stats_dict = {}
-
-        with open(filepath, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-        
-        # 第一遍：收集所有QQ和基本信息
-        qq_names = {}  # {qq: name}
-        name_to_qq = {}  # {name: qq} 用于@检测
-        for line in lines:
-            line = line.strip()
-            m = TIME_LINE_PATTERN.match(line)
-            if m:
-                sender = m.group(2)
-                qq = m.group(3)
-                # 过滤系统QQ
-                if qq not in SYSTEM_QQ_NUMBERS:
-                    qq_names[qq] = sender
-                    name_to_qq[sender] = qq
-        
-        # 初始化统计对象
-        if qq_list:
-            for qq in qq_list:
-                stats_dict[qq] = PersonalStats(qq, qq_names.get(qq, qq))
-        else:
-            for qq, name in qq_names.items():
-                stats_dict[qq] = PersonalStats(qq, name)
-        
-        # 第二遍：收集消息数据
-        all_messages = []  # 用于后续分析
-        i = 0
-        while i < len(lines):
-            line = lines[i].strip()
-            m = TIME_LINE_PATTERN.match(line)
-            if m:
-                timestamp = m.group(1)
-                sender = m.group(2)
-                qq = m.group(3)
-                content = ""
-                
-                # 过滤系统QQ
-                if qq in SYSTEM_QQ_NUMBERS:
-                    # 跳过系统消息的内容行
-                    if i + 1 < len(lines) and not TIME_LINE_PATTERN.match(lines[i + 1].strip()):
-                        i += 1
-                    i += 1
-                    continue
-                
-                # 获取消息内容
-                if i + 1 < len(lines):
-                    next_line = lines[i + 1].strip()
-                    if not TIME_LINE_PATTERN.match(next_line):
-                        content = next_line
-                        i += 1
-                
-                # 跳过不在qq_list中的QQ
-                if qq not in stats_dict:
-                    i += 1
-                    continue
-                
-                all_messages.append({
-                    'timestamp': timestamp,
-                    'sender': sender,
-                    'qq': qq,
-                    'content': content
-                })
-            i += 1
-        
-        # 处理消息
-        for msg in all_messages:
-            self._process_message(msg, stats_dict, name_to_qq)
-        
-        # 后处理（计算派生指标）
-        for qq, stats in stats_dict.items():
-            self._post_process_stats(stats, all_messages, name_to_qq)
-        
-        return stats_dict    
 
     def analyze_messages(self, messages, qq_list=None, qq_names=None):
         """基于消息列表进行个人分析。
@@ -275,7 +187,7 @@ class PersonalAnalyzer:
                 'is_system': is_system,
                 'is_recalled': is_recalled,
                 'message_type': m.get('message_type'),
-                'resource_types': m.get('resource_types') if isinstance(m.get('resource_types'), list) else [],
+                'element_counts': m.get('element_counts') if isinstance(m.get('element_counts'), dict) else {},
                 'mentions': m.get('mentions') if isinstance(m.get('mentions'), list) else [],
                 'mention_count': int(m.get('mention_count') or 0),
                 'reply_to_qq': m.get('reply_to_qq'),
@@ -354,22 +266,27 @@ class PersonalAnalyzer:
         # 说明：content 来源于 lines[i+1].strip()，不包含原始换行符，因此与旧 replace 逻辑结果一致。
         clean_content = clean_message_content(content)
         stats.avg_message_length += len(clean_content)
-        rtypes = msg.get('resource_types')
-        if not isinstance(rtypes, list):
-            rtypes = []
-        rtypes = [str(t) for t in rtypes if t]
+        element_counts = msg.get('element_counts')
+        if not isinstance(element_counts, dict):
+            element_counts = {}
 
-        # media/link 优先用结构化资源类型
-        if rtypes:
-            stats.image_count += sum(1 for t in rtypes if t == 'image')
-            stats.emoji_count += sum(1 for t in rtypes if t in ('emoji', 'sticker'))
-            stats.link_count += 1 if ('link' in rtypes) else 0
-            stats.forward_count += 1 if ('forward' in rtypes) else 0
-            stats.file_count += sum(1 for t in rtypes if t == 'file')
-        else:
-            stats.image_count += content.count('[图片]')
-            stats.emoji_count += content.count('[表情]')
-            stats.link_count += len(HTTP_PATTERN.findall(content))
+        def _n(k: int) -> int:
+            try:
+                return int(element_counts.get(k, 0) or 0)
+            except Exception:
+                return 0
+
+        # media：只使用 elements 体系
+        stats.image_count += _n(2)
+        stats.file_count += _n(3)
+        stats.emoji_count += (_n(6) + _n(11))
+
+        # link：TXT/JSON 都可能只有文本形式，因此保留 URL 正则
+        stats.link_count += len(HTTP_PATTERN.findall(content))
+
+        # forward：目前仍由 message_type 兜底（elements 暂无稳定 forward elementType）
+        if str(msg.get('message_type') or '') == 'forward':
+            stats.forward_count += 1
 
         is_recalled = bool(msg.get('is_recalled')) or ('撤回了一条消息' in content)
         stats.recall_count += 1 if is_recalled else 0
@@ -499,17 +416,8 @@ class PersonalAnalyzer:
             except Exception as e:
                 print(f"个人热词分析失败: {e}")
                 stats.top_words = []
-    
-    def get_user_stats(self, filepath, qq):
-        """获取单个用户的统计"""
-        stats_dict = self.analyze_file(filepath, [qq])
-        return stats_dict.get(qq)
 
     def get_user_stats_from_messages(self, messages, qq, qq_names=None):
         """从消息列表获取单个用户的统计（用于 JSON/统一导入层）。"""
         stats_dict = self.analyze_messages(messages, [qq], qq_names=qq_names)
         return stats_dict.get(str(qq))
-    
-    def get_all_stats(self, filepath):
-        """获取所有用户的统计"""
-        return self.analyze_file(filepath)

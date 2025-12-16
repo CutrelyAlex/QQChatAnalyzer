@@ -2,17 +2,12 @@
 
 这里聚合：
 - 身份规则（uid/uin 合并）
-- 去重键规则
-
-说明：
-- 消息过滤（例如排除系统/撤回）应由“热词/上层分析”管理，而不是导入层。
 """
 
 from __future__ import annotations
 
-import hashlib
-from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from dataclasses import dataclass
+from typing import Any, Dict, Iterable, List, Optional
 
 from .schema import Message
 
@@ -92,68 +87,3 @@ def apply_hotword_filters(messages: Iterable[Message], options: HotwordFilterOpt
             continue
         out.append(m)
     return out
-
-
-# -------------------------
-# 去重键与统计
-# -------------------------
-
-
-def _hash_text(s: str) -> str:
-    h = hashlib.sha256()
-    h.update((s or "").encode("utf-8", errors="ignore"))
-    return h.hexdigest()
-
-
-def content_fingerprint(msg: Message) -> str:
-    """用于兜底去重的内容指纹。
-
-    只依赖导入层保留的必要字段：
-    - clean_text（msg.text）
-    - nt_msg_type
-    - element_counts
-    - mentions 数量
-    """
-
-    parts: list[str] = []
-    parts.append(msg.text or "")
-    parts.append(str(msg.nt_msg_type or ""))
-    # element_counts 需稳定排序
-    if msg.element_counts:
-        for k in sorted(msg.element_counts.keys()):
-            parts.append(f"e{k}:{msg.element_counts.get(k)}")
-    parts.append(f"m@:{len(msg.mentions or [])}")
-    return _hash_text("\n".join(parts))
-
-
-def dedup_key(msg: Message) -> Tuple[str, str]:
-    """返回 (层级, key)。层级：messageId/composite/fallback"""
-
-    if msg.message_id:
-        return "messageId", f"mid:{msg.message_id}"
-
-    if msg.conversation_id and msg.message_seq is not None and msg.msg_random is not None:
-        return "composite", f"cmp:{msg.conversation_id}:{msg.message_seq}:{msg.msg_random}"
-
-    sender = msg.sender_participant_id or ""
-    fp = content_fingerprint(msg)
-    return "fallback", f"fb:{msg.timestamp_ms}:{sender}:{fp}"
-
-
-@dataclass
-class DedupTracker:
-    seen: Set[str] = field(default_factory=set)
-    stats: Dict[str, int] = field(default_factory=lambda: {"byMessageId": 0, "byComposite": 0, "byFallback": 0})
-
-    def is_duplicate(self, msg: Message) -> bool:
-        tier, key = dedup_key(msg)
-        if key in self.seen:
-            if tier == "messageId":
-                self.stats["byMessageId"] += 1
-            elif tier == "composite":
-                self.stats["byComposite"] += 1
-            else:
-                self.stats["byFallback"] += 1
-            return True
-        self.seen.add(key)
-        return False

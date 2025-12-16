@@ -6,7 +6,7 @@ from collections import defaultdict, Counter
 from datetime import datetime
 from typing import Dict, List, Any
 
-from .LineProcess import process_lines_data, LineData
+from .chat_import.txt_importer import LineData
 from .CutWords import cut_words
 from .RemoveWords import remove_words
 from .utils import parse_timestamp, SYSTEM_QQ_NUMBERS, EMOJI_PATTERN, clean_message_content, has_link
@@ -120,18 +120,6 @@ class GroupAnalyzer:
         self.stats = GroupStats()
         self.qq_to_name = {}  # QQ -> 昵称映射
     
-    def load_messages_from_file(self, filepath: str) -> None:
-        """
-        从文件加载消息并预处理
-        
-        Args:
-            filepath: 聊天记录文件路径
-        """
-        # 使用 LineProcess 加载和预处理数据（现在返回 qq_to_name_map）
-        all_lines, all_lines_data, qq_to_name_map = process_lines_data(filepath, mode='all')
-        self.lines_data = all_lines_data
-        self.qq_to_name = qq_to_name_map
-    
     def load_messages(self, messages: List[Dict[str, Any]]) -> None:
         """
         加载消息列表（API 调用方式）
@@ -141,57 +129,27 @@ class GroupAnalyzer:
         """
         self.lines_data = []
         self.qq_to_name = {}  # 重新初始化为 {qq: [nickname1, nickname2, ...]} 格式
-
-        def _is_pure_digits_name(s: str) -> bool:
-            s = (s or '').strip()
-            return bool(s) and s.isdigit()
-
-        def _append_sender_name(qq: str, sender: str) -> None:
-            """维护 qq_to_name 的昵称历史。
-
-            规则（尽量符合“用户看到的昵称”）：
-            - 忽略空 sender
-            - 如果历史里已经出现过非纯数字昵称，则不再把纯数字 sender 追加到末尾
-              （避免“昵称被 QQ 数字覆盖”，导致排行展示退化为 QQ）
-            - 仍保持去重（同一个昵称不重复记录）
-            """
-
-            sender = (sender or '').strip()
-            if not qq or not sender:
-                return
-
-            lst = self.qq_to_name.setdefault(qq, [])
-            if lst and lst[-1] == sender:
-                return
-
-            has_non_numeric = any((x or '').strip() and (not _is_pure_digits_name(x)) for x in lst)
-            if has_non_numeric and _is_pure_digits_name(sender):
-                return
-
-            if sender not in lst:
-                lst.append(sender)
         
         for msg in messages:
             qq = str(msg.get('qq', '') or '')
             content = str(msg.get('content', '') or '')
 
             is_system = bool(msg.get('is_system')) or (qq in SYSTEM_QQ_NUMBERS) or (qq == 'system')
-            is_recall = bool(msg.get('is_recalled')) or ('撤回了一条消息' in content)
+            is_recall = bool(msg.get('is_recalled'))
 
-            resource_types = msg.get('resource_types')
-            if not isinstance(resource_types, list):
-                resource_types = []
-            resource_types = [str(t) for t in resource_types if t]
+            element_counts = msg.get('element_counts')
+            if not isinstance(element_counts, dict):
+                element_counts = {}
 
-            # 优先使用结构化资源类型；缺失时回退旧标记
-            image_count = resource_types.count('image') if resource_types else content.count('[图片]')
-            emoji_count = 0
-            if resource_types:
-                for t in resource_types:
-                    if t in ('emoji', 'sticker'):
-                        emoji_count += 1
-            else:
-                emoji_count = content.count('[表情]')
+            def _n(k: int) -> int:
+                try:
+                    return int(element_counts.get(k, 0) or 0)
+                except Exception:
+                    return 0
+
+            # 只保留 elements 体系：图片(2)、表情(6/11)
+            image_count = _n(2)
+            emoji_count = _n(6) + _n(11)
 
             # mentions：若导入层提供 mentions 列表则直接使用
             mentions = msg.get('mentions')
@@ -211,20 +169,24 @@ class GroupAnalyzer:
                 image_count=image_count,
                 emoji_count=emoji_count,
                 mentions=mentions,
-                has_link=has_link(content) or ('link' in resource_types),
+                has_link=has_link(content),
                 is_recall=is_recall,
             )
 
             # 附加结构化信息（LineData 是轻量容器；动态扩展字段即可）
             line_data.is_system = is_system
             line_data.message_type = str(msg.get('message_type') or line_data.get_message_type() or 'unknown')
-            line_data.resource_types = resource_types
+            line_data.element_counts = element_counts
+            line_data.reply_to_qq = msg.get('reply_to_qq')
 
             self.lines_data.append(line_data)
 
             # 昵称映射：仅记录“非系统消息”的 sender
             if (not is_system) and qq and line_data.sender:
-                _append_sender_name(qq, line_data.sender)
+                if qq not in self.qq_to_name:
+                    self.qq_to_name[qq] = []
+                if line_data.sender not in self.qq_to_name[qq]:
+                    self.qq_to_name[qq].append(line_data.sender)
     
     def analyze(self) -> GroupStats:
         """
@@ -307,10 +269,15 @@ class GroupAnalyzer:
 
             is_system = bool(getattr(line_data, 'is_system', False))
             msg_type = str(getattr(line_data, 'message_type', '') or line_data.get_message_type() or 'unknown')
-            rtypes = getattr(line_data, 'resource_types', None)
-            if not isinstance(rtypes, list):
-                rtypes = []
-            rtypes = [str(t) for t in rtypes if t]
+            element_counts = getattr(line_data, 'element_counts', None)
+            if not isinstance(element_counts, dict):
+                element_counts = {}
+
+            def _n(k: int) -> int:
+                try:
+                    return int(element_counts.get(k, 0) or 0)
+                except Exception:
+                    return 0
 
             if is_system:
                 system_count += 1
@@ -320,18 +287,25 @@ class GroupAnalyzer:
                     recalled_by_user[qq] += 1
             if (not is_system) and line_data.mentions:
                 mention_msg_count += 1
-            if msg_type == 'reply':
+            if msg_type == 'reply' or getattr(line_data, 'reply_to_qq', None):
                 reply_msg_count += 1
 
-            # 媒体统计：优先用 resource_types；缺失则用旧启发式
-            media_types = set(rtypes)
-            if not media_types:
-                if line_data.image_count > 0:
-                    media_types.add('image')
-                if line_data.emoji_count > 0:
-                    media_types.add('emoji')
-                if line_data.has_link:
-                    media_types.add('link')
+            # 媒体统计：仅使用 elements + 链接启发式（TXT 没有 link 元素）
+            media_types = set()
+            if _n(2) > 0:
+                media_types.add('image')
+            if (_n(6) + _n(11)) > 0:
+                media_types.add('emoji')
+            if _n(3) > 0:
+                media_types.add('file')
+            if _n(4) > 0:
+                media_types.add('audio')
+            if _n(5) > 0:
+                media_types.add('video')
+            if line_data.has_link:
+                media_types.add('link')
+            if msg_type == 'forward':
+                media_types.add('forward')
 
             if media_types:
                 media_msg_count += 1
@@ -367,23 +341,23 @@ class GroupAnalyzer:
             if is_system or line_data.is_recall:
                 pass
             else:
-                # 优先使用结构化类型与资源类型
-                if 'image' in rtypes or line_data.image_count > 0 or msg_type == 'image':
+                # 只保留 elements 体系：图片/表情/文件/音视频 + link 启发式
+                if _n(2) > 0 or msg_type == 'image':
                     image_count += 1
                     if qq:
-                        image_by_user[qq] += 1
-                elif any(t in ('emoji', 'sticker') for t in rtypes) or line_data.emoji_count > 0 or msg_type in ('emoji', 'sticker'):
+                        image_by_user[qq] += max(1, _n(2))
+                elif (_n(6) + _n(11)) > 0 or msg_type in ('emoji', 'sticker'):
                     emoji_count += 1
                     if qq:
-                        emoji_by_user[qq] += 1
-                elif ('link' in rtypes) or line_data.has_link or msg_type == 'link':
+                        emoji_by_user[qq] += max(1, (_n(6) + _n(11)))
+                elif line_data.has_link or msg_type == 'link':
                     link_count += 1
-                elif msg_type in ('forward', 'video', 'audio', 'file', 'redpacket', 'special') or ('forward' in rtypes):
+                elif msg_type in ('forward', 'video', 'audio', 'file', 'redpacket', 'special') or _n(3) > 0 or _n(4) > 0 or _n(5) > 0:
                     forward_count += 1
-                    if qq and (msg_type == 'forward' or ('forward' in rtypes)):
+                    if qq and msg_type == 'forward':
                         forward_by_user[qq] += 1
-                    if qq and (msg_type == 'file' or ('file' in rtypes)):
-                        file_by_user[qq] += 1
+                    if qq and (_n(3) > 0 or msg_type == 'file'):
+                        file_by_user[qq] += max(1, _n(3))
                 elif line_data.clean_text.strip() or msg_type == 'text':
                     text_count += 1
             
@@ -451,7 +425,11 @@ class GroupAnalyzer:
             if not counter:
                 return None
             top_qq, top_cnt = max(counter.items(), key=lambda x: x[1])
-            name = self._get_preferred_name(top_qq)
+            names = self.qq_to_name.get(top_qq, [top_qq])
+            if isinstance(names, list):
+                name = names[-1] if names else top_qq
+            else:
+                name = names if names else top_qq
             return {'qq': top_qq, 'name': name, 'count': int(top_cnt)}
 
         self.stats.top_recaller = build_top_item(recalled_by_user)
@@ -476,7 +454,12 @@ class GroupAnalyzer:
         
         # 构建成员信息 - 处理多个昵称的格式
         def build_member_info(qq, count):
-            name = self._get_preferred_name(qq)
+            names = self.qq_to_name.get(qq, [qq])
+            # 如果是列表，取最后一个（最新的昵称），否则直接使用
+            if isinstance(names, list):
+                name = names[-1] if names else qq
+            else:
+                name = names if names else qq
             return {'qq': qq, 'name': name, 'count': count}
         
         # 分层成员
@@ -497,7 +480,11 @@ class GroupAnalyzer:
         
         # 辅助函数：获取QQ对应的最新昵称
         def get_qq_name(qq):
-            return self._get_preferred_name(qq)
+            names = self.qq_to_name.get(qq, [qq])
+            if isinstance(names, list):
+                return names[-1] if names else qq
+            else:
+                return names if names else qq
         
         # 每小时最活跃用户
         hourly_top_users = {}
@@ -534,32 +521,6 @@ class GroupAnalyzer:
         self.stats.hourly_top_users = hourly_top_users
         self.stats.weekday_top_users = weekday_top_users
         self.stats.weekday_totals = weekday_totals_formatted
-
-    def _get_preferred_name(self, qq: str) -> str:
-        """从 qq_to_name 中挑选更适合展示的昵称。
-
-        优先级：
-        1) 最近出现的“非纯数字昵称”
-        2) 最近出现的任意昵称
-        3) qq 本身
-        """
-
-        qq = str(qq or '')
-        names = self.qq_to_name.get(qq)
-        if isinstance(names, list) and names:
-            for x in reversed(names):
-                s = (x or '').strip()
-                if s and (not s.isdigit()):
-                    return s
-            # 全是数字/空：退回最后一个
-            last = (names[-1] or '').strip()
-            return last or qq
-
-        if isinstance(names, str):
-            s = names.strip()
-            return s or qq
-
-        return qq
     
     def _extract_hot_content(self) -> None:
         """T025: 提取热词"""

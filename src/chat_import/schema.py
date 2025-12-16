@@ -80,16 +80,14 @@ class Message:
 
     # 系统灰条：rawMessage.elements[].grayTipElement.subElementType
     graytip_subtype: Optional[int] = None
-    # 系统灰条：rawMessage.elements[].grayTipElement.xmlElement.busiType（暂不确定含义，但保留）
-    graytip_xml_busi_type: Optional[str] = None
 
     # 撤回：操作者信息（uid/uin）
     recall_operator_uid: Optional[str] = None
     recall_operator_uin: Optional[str] = None
 
-    # 供现有分析器/词云等使用：从 elements 中拼接得到的“真正说话文本”（TEXT 且 atType=0）
+    # 供现有分析器/词云等使用，从 elements 中拼接得到的真正说话文本（TEXT 且 atType=0）
     text: str = ""
-    # content.text（rawMessage 的简化版，仅用于组装 AI 原文，不作为分析输入）
+    # content.text（用于组装 AI 原文，不作为分析输入）
     content_text: str = ""
 
     # rawMessage.elements 的统计：elementType -> count
@@ -97,9 +95,6 @@ class Message:
 
     mentions: List[Mention] = field(default_factory=list)
     reply_to: Optional[ReplyReference] = None
-
-    # 不保存 raw/json 副本：未来扩展直接加字段 + 加载逻辑即可
-
 
 @dataclass
 class Conversation:
@@ -112,7 +107,6 @@ class Conversation:
 
     message_count_raw: int = 0
     message_count_deduped: int = 0
-    dedup_stats: Dict[str, int] = field(default_factory=lambda: {"byMessageId": 0, "byComposite": 0, "byFallback": 0})
 
     time_range: Optional[Dict[str, int]] = None  # {startTsMs, endTsMs}
 
