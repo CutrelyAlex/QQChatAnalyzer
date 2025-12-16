@@ -106,7 +106,6 @@ class Conversation:
     messages: List[Message] = field(default_factory=list)
 
     message_count_raw: int = 0
-    message_count_deduped: int = 0
 
     time_range: Optional[Dict[str, int]] = None  # {startTsMs, endTsMs}
 

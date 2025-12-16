@@ -79,7 +79,6 @@ def build_snapshot(
 		"title": getattr(conversation, "title", None),
 		"participants": _safe_int(len(getattr(conversation, "participants", []) or [])),
 		"messageCountRaw": _safe_int(getattr(conversation, "message_count_raw", 0)),
-		"messageCountDeduped": _safe_int(getattr(conversation, "message_count_deduped", 0)),
 	}
 
 	# group_stats：抽取 UI 需要的少量字段
@@ -122,7 +121,6 @@ def diff_snapshots(left: CompareSnapshot, right: CompareSnapshot) -> Dict[str, A
 	fields = {
 		"participants": (l["conversation"].get("participants"), r["conversation"].get("participants")),
 		"messageCountRaw": (l["conversation"].get("messageCountRaw"), r["conversation"].get("messageCountRaw")),
-		"messageCountDeduped": (l["conversation"].get("messageCountDeduped"), r["conversation"].get("messageCountDeduped")),
 		"total_messages": (l["group"].get("total_messages"), r["group"].get("total_messages")),
 		"daily_average": (l["group"].get("daily_average"), r["group"].get("daily_average")),
 		"system_messages": (l["group"].get("system_messages"), r["group"].get("system_messages")),

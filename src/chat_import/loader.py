@@ -37,8 +37,6 @@ def load_chat_file(file_path: str, options: Optional[Dict[str, Any]] = None) -> 
 
     conversation.message_count_raw = len(conversation.messages)
 
-    conversation.message_count_deduped = conversation.message_count_raw
-
     _compute_time_range(conversation)
 
     return LoadResult(conversation=conversation, warnings=warnings)

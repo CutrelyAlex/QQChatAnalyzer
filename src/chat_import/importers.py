@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from .core import extract_sender_identity, merge_display_name
+from .enums import NTMsgType
 from .schema import Conversation, Mention, Message, Participant, ReplyReference, safe_int
 from .txt_importer import load_conversation_from_txt
 from ..config import Config
@@ -124,6 +125,28 @@ def _append_unique_history(history: tuple[str, ...], name: Optional[str]) -> tup
     if name in history:
         return history
     return (*history, name)
+
+
+def _message_type_from_nt_msg_type(nt_msg_type: Optional[int]) -> str:
+    """把 rawMessage.msgType 映射为稳定的字符串。
+
+    规则：直接使用 enums.NTMsgType 的枚举名（完整保留）。
+    - 已知值：返回如 "KMSGTYPENULL" / "KMSGTYPEGRAYTIPS" / "KMSGTYPEMULTIMSGFORWARD" 等
+    - 未知值：返回 "type_<int>"（例如 type_999）
+    """
+
+    if nt_msg_type is None:
+        return NTMsgType.KMSGTYPEUNKNOWN.name
+
+    try:
+        v = int(nt_msg_type)
+    except Exception:
+        return NTMsgType.KMSGTYPEUNKNOWN.name
+
+    try:
+        return NTMsgType(v).name
+    except Exception:
+        return f"type_{v}"
 
 
 def _parse_elements(
@@ -365,11 +388,10 @@ def load_conversation_from_json(file_path: str) -> Tuple[Conversation, List[str]
         }
         sender_ident = extract_sender_identity(merged_sender)
 
-        # 当前 JSON 顶层字段可信：不再从 rawMessage 推断系统/撤回
         is_system = bool(m.get("isSystemMessage", False))
         is_recalled = bool(m.get("isRecalled", False))
 
-        # 系统占位 sender：uid=纯数字 且 name="0"（跳过参与者入表；消息 sender 也用 None 兜底）
+        # 系统占位 sender：uid=纯数字 且 name="0"
         is_system_sender_zero = (
             _norm_name(merged_sender.get("name")) == "0" and _looks_like_number(_norm_name(merged_sender.get("uid")))
         )
@@ -445,30 +467,13 @@ def load_conversation_from_json(file_path: str) -> Tuple[Conversation, List[str]
             recall_operator_uin,
         ) = _parse_elements(raw_message)
 
-        # message_type 推断：优先看系统/撤回/回复；其次看 element_counts
-        message_type = "text"
-        if is_system:
-            message_type = "system"
-        elif reply_to is not None:
-            message_type = "reply"
-        else:
-            # ElementType: 2=图片, 3=文件, 4=语音, 5=视频, 6/11=表情
-            if element_counts.get(2, 0) > 0:
-                message_type = "image"
-            elif element_counts.get(5, 0) > 0:
-                message_type = "video"
-            elif element_counts.get(4, 0) > 0:
-                message_type = "audio"
-            elif element_counts.get(3, 0) > 0:
-                message_type = "file"
-            elif (element_counts.get(6, 0) > 0 or element_counts.get(11, 0) > 0) and not clean_text.strip():
-                message_type = "emoji"
-
+        # message_type：直接依据 rawMessage.msgType（完整枚举名）；如缺失则回退 messageType
         nt_msg_type = None
         if isinstance(raw_message, dict):
             nt_msg_type = safe_int(raw_message.get("msgType"))
         if nt_msg_type is None:
             nt_msg_type = safe_int(m.get("messageType"))
+        message_type = _message_type_from_nt_msg_type(nt_msg_type)
 
         msg = Message(
             id=f"tmp:{idx}",

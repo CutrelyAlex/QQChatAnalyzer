@@ -84,7 +84,6 @@ function renderSnapshotSummary(containerId, snapshot) {
         ['标题', conv.title || '-'],
         ['参与者数', conv.participants ?? '-'],
         ['消息(原始)', conv.messageCountRaw ?? '-'],
-        ['消息(去重)', conv.messageCountDeduped ?? '-'],
         ['消息总数(分析口径)', grp.total_messages ?? '-'],
         ['日均消息', (typeof grp.daily_average === 'number') ? grp.daily_average.toFixed(1) : (grp.daily_average ?? '-')],
         ['系统事件', grp.system_messages ?? '-'],
@@ -206,7 +205,6 @@ async function runCompare() {
         const labelMap = {
             participants: '参与者数',
             messageCountRaw: '消息(原始)',
-            messageCountDeduped: '消息(去重)',
             total_messages: '消息总数(分析口径)',
             daily_average: '日均消息',
             system_messages: '系统事件',
