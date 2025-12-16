@@ -461,6 +461,85 @@ html::before {
     text-shadow: 0 0 10px rgba(0, 255, 0, 0.4);
 }
 
+/* ======================================
+   layout-pro：左侧主功能栏（桌面端竖向）
+   说明：此前该样式曾以内嵌 style 存在于 index.html。
+   现在统一放到主样式中，避免被误删导致布局回退为横向。
+   ====================================== */
+
+.tabs-container.layout-pro {
+    display: flex;
+    flex-direction: row;
+    min-height: 680px;
+}
+
+.tabs-container.layout-pro .tabs-header {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    min-width: 220px;
+    max-width: 260px;
+    border-bottom: none;
+    border-right: 2px solid var(--accent-cyan);
+}
+
+.tabs-container.layout-pro .sidebar-title {
+    padding: 12px 14px;
+    font-size: 12px;
+    color: var(--secondary-text);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+}
+
+.tabs-container.layout-pro .tab-button {
+    flex: 0 0 auto;
+    width: 100%;
+    min-width: 0;
+    text-align: left;
+    border-bottom: 1px solid rgba(0, 255, 255, 0.15);
+    border-left: 3px solid transparent;
+    border-right: none;
+}
+
+.tabs-container.layout-pro .tab-button.active {
+    border-bottom-color: rgba(0, 255, 0, 0.12);
+    border-left-color: var(--primary-color);
+}
+
+.tabs-container.layout-pro .tabs-content {
+    flex: 1;
+    overflow-y: auto;
+}
+
+@media (max-width: 980px) {
+    .tabs-container.layout-pro {
+        flex-direction: column;
+        min-height: auto;
+    }
+
+    .tabs-container.layout-pro .tabs-header {
+        flex-direction: row;
+        flex-wrap: wrap;
+        min-width: 0;
+        max-width: none;
+        border-right: none;
+        border-bottom: 2px solid var(--accent-cyan);
+    }
+
+    .tabs-container.layout-pro .tab-button {
+        flex: 1;
+        width: auto;
+        min-width: 120px;
+        text-align: center;
+        border-left: none;
+        border-bottom: 3px solid transparent;
+    }
+
+    .tabs-container.layout-pro .tab-button.active {
+        border-left-color: transparent;
+        border-bottom-color: var(--primary-color);
+    }
+}
+
 .tabs-content {
     flex: 1;
     overflow-y: auto;
@@ -489,6 +568,38 @@ html::before {
 
 .tab-header {
     margin-bottom: 24px;
+}
+
+/* ======================================
+   子功能 subtabs（规划 UI）
+   ====================================== */
+
+.subtabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.subtab {
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(0, 255, 255, 0.25);
+    background: rgba(0, 0, 0, 0.25);
+    color: var(--secondary-text);
+    font-size: 12px;
+    user-select: none;
+}
+
+.subtab.is-active {
+    border-color: rgba(0, 255, 255, 0.55);
+    background: rgba(0, 255, 255, 0.12);
+    color: var(--accent-cyan);
+    text-shadow: 0 0 6px rgba(0, 255, 255, 0.25);
+}
+
+.subtab.is-disabled {
+    opacity: 0.55;
 }
 
 .tab-header h2 {
@@ -584,9 +695,15 @@ html::before {
     font-family: 'Courier New', monospace;
 }
 
+/* 个人分析：卡片内部更紧凑（整体仍为网格换行，最多4列由 #personal-stats .stats-grid 控制） */
+#personal-stats .stat-card {
     padding: 14px 16px;
-    gap: 10px;
-    min-height: auto;
+    gap: 12px;
+}
+
+#personal-stats .stat-icon {
+    font-size: 28px;
+}
 .stat-card:hover {
     transform: translateY(-4px);
     box-shadow: 0 0 25px rgba(0, 255, 0, 0.4), 0 0 15px rgba(0, 255, 255, 0.2);

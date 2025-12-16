@@ -86,7 +86,7 @@ const analysisCacheManager = {
             const hasBoth = hasGroup && hasNetwork;
             
             html += `<div class="cache-file-group">`;
-            html += `<div class="cache-file-header">📁 ${filename}</div>`;
+            html += `<div class="cache-file-header">${filename}</div>`;
             
             // 如果同时有群体分析和网络分析，显示合并生成选项
             if (hasBoth) {

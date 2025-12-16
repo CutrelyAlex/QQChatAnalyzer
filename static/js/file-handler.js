@@ -65,11 +65,12 @@ async function loadFile() {
         
         // 启用生成按钮
         updateAIPanel();
-        
-        // 加载预览筛选器
-        await loadPreviewFilters();
-        
+
+        // 标记预览筛选器为“未加载”（切换文件时必须重新加载）
+        markPreviewFiltersStale(filename);
+
         // 加载成员列表到 datalist（QQ号/昵称）
+        // 注意：这里是 personal 分析的关键依赖，优先加载；不要被 preview stats 阻塞。
         await loadQQList(filename);
         
         // 异步估算Token（不阻塞UI）
@@ -123,11 +124,54 @@ async function estimateTokensForFile(filename) {
 
 // ============ 聊天记录预览 ============
 
-async function loadPreviewFilters() {
-    if (!appState.currentFile) return;
+function markPreviewFiltersStale(_filename) {
+    // 为了兼容旧状态，尽量不依赖 appState 的结构变更
+    appState.previewFiltersLoadedForFile = null;
+    appState.previewFiltersLoadingPromise = null;
+}
+
+async function ensurePreviewFiltersLoaded(filename) {
+    const file = filename || appState.currentFile;
+    if (!file) return;
+
+    if (appState.previewFiltersLoadedForFile === file) return;
+    if (appState.previewFiltersLoadingPromise) return appState.previewFiltersLoadingPromise;
+
+    // UI：显示“加载中”并禁用筛选器，避免用户误操作
+    const dateSelect = document.getElementById('preview-date-filter');
+    const qqSelect = document.getElementById('preview-qq-filter');
+    if (dateSelect) {
+        dateSelect.disabled = true;
+        dateSelect.innerHTML = '<option value="">-- 加载中... --</option>';
+    }
+    if (qqSelect) {
+        qqSelect.disabled = true;
+        qqSelect.innerHTML = '<option value="">-- 加载中... --</option>';
+    }
+
+    const p = (async () => {
+        try {
+            await loadPreviewFilters(file);
+        } finally {
+            appState.previewFiltersLoadingPromise = null;
+            // 仅当仍是当前文件时，恢复 UI 状态
+            if (appState.currentFile === file) {
+                if (dateSelect) dateSelect.disabled = false;
+                if (qqSelect) qqSelect.disabled = false;
+            }
+        }
+    })();
+
+    appState.previewFiltersLoadingPromise = p;
+    return p;
+}
+
+async function loadPreviewFilters(filename) {
+    const file = filename || appState.currentFile;
+    if (!file) return;
     
     try {
-        const response = await fetch(`${API_BASE}/preview/${appState.currentFile}/stats`);
+        const response = await fetch(`${API_BASE}/preview/${file}/stats`);
         const data = await response.json();
         
         if (!data.success) {
@@ -155,6 +199,11 @@ async function loadPreviewFilters() {
             option.textContent = sender && sender !== item.qq ? `${sender}(${item.qq})` : `QQ:${item.qq}`;
             qqSelect.appendChild(option);
         });
+
+        // 仅当 still-current 时记录已加载（避免快速切文件导致串数据）
+        if (appState.currentFile === file) {
+            appState.previewFiltersLoadedForFile = file;
+        }
         
     } catch (error) {
         console.error('加载预览数据失败:', error);
@@ -214,6 +263,11 @@ async function loadChatRecords() {
     if (!appState.currentFile) {
         showStatusMessage('error', '请先加载文件');
         return;
+    }
+
+    // 懒加载预览筛选器（首次进入预览时才拉 stats）
+    if (typeof ensurePreviewFiltersLoaded === 'function') {
+        await ensurePreviewFiltersLoaded(appState.currentFile);
     }
     
     const dateFilter = document.getElementById('preview-date-filter');

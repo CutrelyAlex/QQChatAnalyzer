@@ -229,6 +229,13 @@ function switchTab(event) {
     // 激活选中标签页
     event.target.classList.add('active');
     document.getElementById(`${tabName}-tab`).classList.add('active');
+
+    // 预览筛选器
+    if (tabName === 'preview' && appState.currentFile) {
+        if (typeof ensurePreviewFiltersLoaded === 'function') {
+            ensurePreviewFiltersLoaded(appState.currentFile);
+        }
+    }
 }
 
 // ============ AI功能 ============
