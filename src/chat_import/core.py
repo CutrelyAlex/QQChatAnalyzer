@@ -3,7 +3,9 @@
 这里聚合：
 - 身份规则（uid/uin 合并）
 - 去重键规则
-- 消息过滤（是否包含系统/撤回；热词默认排除）
+
+说明：
+- 消息过滤（例如排除系统/撤回）应由“热词/上层分析”管理，而不是导入层。
 """
 
 from __future__ import annotations
@@ -12,7 +14,7 @@ import hashlib
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
-from .schema import Conversation, Message
+from .schema import Message
 
 
 # -------------------------
@@ -36,24 +38,23 @@ def _norm_str(v: Any) -> Optional[str]:
 
 
 def participant_id_from_uid_uin(uid: Any = None, uin: Any = None, fallback_name: Any = None) -> str:
-    """生成稳定 participant_id。
+    """生成稳定的参与者标识。
 
-    优先级：
-    - uid（若存在）
-    - uin（若存在）
-    - fallback_name（仅用于缺失 uid/uin 的极端情况）
+    约定：
+    - JSON：uid 一定存在，因此标识应当等同于 uid
+    - TXT：通常只有 uin，因此标识等同于 uin
     """
 
     uid_s = _norm_str(uid)
     if uid_s:
-        return f"uid:{uid_s}"
+        return uid_s
 
     uin_s = _norm_str(uin)
     if uin_s:
-        return f"uin:{uin_s}"
+        return uin_s
 
     name_s = _norm_str(fallback_name) or "unknown"
-    return f"name:{name_s}"
+    return name_s
 
 
 def extract_sender_identity(sender_obj: Dict[str, Any] | None) -> SenderIdentity:
@@ -77,33 +78,10 @@ def merge_display_name(current: str, new_name: str) -> str:
     return current
 
 
-# -------------------------
-# 过滤规则
-# -------------------------
-
-
-@dataclass(frozen=True)
-class FilterOptions:
-    include_system: bool = True
-    include_recalled: bool = True
-
-
 @dataclass(frozen=True)
 class HotwordFilterOptions:
     exclude_system: bool = True
     exclude_recalled: bool = True
-
-
-def apply_filters(messages: Iterable[Message], options: FilterOptions) -> List[Message]:
-    out: List[Message] = []
-    for m in messages:
-        if not options.include_system and m.is_system:
-            continue
-        if not options.include_recalled and m.is_recalled:
-            continue
-        out.append(m)
-    return out
-
 
 def apply_hotword_filters(messages: Iterable[Message], options: HotwordFilterOptions) -> List[Message]:
     out: List[Message] = []
@@ -128,15 +106,23 @@ def _hash_text(s: str) -> str:
 
 
 def content_fingerprint(msg: Message) -> str:
-    """用于兜底去重的内容指纹：文本 + 资源摘要。"""
+    """用于兜底去重的内容指纹。
 
-    parts = [msg.text or ""]
-    for r in msg.resources or []:
-        parts.append(r.type or "")
-        if r.name:
-            parts.append(r.name)
-        if r.url:
-            parts.append(r.url)
+    只依赖导入层保留的必要字段：
+    - clean_text（msg.text）
+    - nt_msg_type
+    - element_counts
+    - mentions 数量
+    """
+
+    parts: list[str] = []
+    parts.append(msg.text or "")
+    parts.append(str(msg.nt_msg_type or ""))
+    # element_counts 需稳定排序
+    if msg.element_counts:
+        for k in sorted(msg.element_counts.keys()):
+            parts.append(f"e{k}:{msg.element_counts.get(k)}")
+    parts.append(f"m@:{len(msg.mentions or [])}")
     return _hash_text("\n".join(parts))
 
 

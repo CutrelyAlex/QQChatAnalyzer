@@ -17,13 +17,7 @@ from .utils import (
     clean_message_content,
 )
 
-# 局部别名（避免重复属性查找/保持现有代码结构）
-_TIME_PATTERN = TIME_LINE_PATTERN
-_MENTION_PATTERN = MENTION_PATTERN
-_HTTP_PATTERN = HTTP_PATTERN
 _AT_NAME_PATTERN = re.compile(r'@(\S+)')
-
-
 class PersonalStats:
     """个人统计数据类"""
     
@@ -134,7 +128,7 @@ class PersonalAnalyzer:
         name_to_qq = {}  # {name: qq} 用于@检测
         for line in lines:
             line = line.strip()
-            m = _TIME_PATTERN.match(line)
+            m = TIME_LINE_PATTERN.match(line)
             if m:
                 sender = m.group(2)
                 qq = m.group(3)
@@ -156,7 +150,7 @@ class PersonalAnalyzer:
         i = 0
         while i < len(lines):
             line = lines[i].strip()
-            m = _TIME_PATTERN.match(line)
+            m = TIME_LINE_PATTERN.match(line)
             if m:
                 timestamp = m.group(1)
                 sender = m.group(2)
@@ -166,7 +160,7 @@ class PersonalAnalyzer:
                 # 过滤系统QQ
                 if qq in SYSTEM_QQ_NUMBERS:
                     # 跳过系统消息的内容行
-                    if i + 1 < len(lines) and not _TIME_PATTERN.match(lines[i + 1].strip()):
+                    if i + 1 < len(lines) and not TIME_LINE_PATTERN.match(lines[i + 1].strip()):
                         i += 1
                     i += 1
                     continue
@@ -174,7 +168,7 @@ class PersonalAnalyzer:
                 # 获取消息内容
                 if i + 1 < len(lines):
                     next_line = lines[i + 1].strip()
-                    if not _TIME_PATTERN.match(next_line):
+                    if not TIME_LINE_PATTERN.match(next_line):
                         content = next_line
                         i += 1
                 
@@ -375,7 +369,7 @@ class PersonalAnalyzer:
         else:
             stats.image_count += content.count('[图片]')
             stats.emoji_count += content.count('[表情]')
-            stats.link_count += len(_HTTP_PATTERN.findall(content))
+            stats.link_count += len(HTTP_PATTERN.findall(content))
 
         is_recalled = bool(msg.get('is_recalled')) or ('撤回了一条消息' in content)
         stats.recall_count += 1 if is_recalled else 0
@@ -397,7 +391,7 @@ class PersonalAnalyzer:
             except Exception:
                 mention_count = 0
         else:
-            mentions = _MENTION_PATTERN.findall(content)
+            mentions = MENTION_PATTERN.findall(content)
             mention_count = len(mentions)
 
         stats.at_count += mention_count

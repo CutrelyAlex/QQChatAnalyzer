@@ -88,14 +88,11 @@ def build_snapshot(
 		"daily_average": _safe_float(group_stats.get("daily_average")),
 		"peak_hours": group_stats.get("peak_hours", []) or [],
 
-		# 旧图表口径
 		"text_ratio": _safe_float(group_stats.get("text_ratio")),
 		"image_ratio": _safe_float(group_stats.get("image_ratio")),
 		"emoji_ratio": _safe_float(group_stats.get("emoji_ratio")),
 		"link_ratio": _safe_float(group_stats.get("link_ratio")),
 		"forward_ratio": _safe_float(group_stats.get("forward_ratio")),
-
-		# US2 扩展指标
 		"system_messages": _safe_int(group_stats.get("system_messages")),
 		"recalled_messages": _safe_int(group_stats.get("recalled_messages")),
 		"mention_messages": _safe_int(group_stats.get("mention_messages")),
@@ -122,7 +119,6 @@ def diff_snapshots(left: CompareSnapshot, right: CompareSnapshot) -> Dict[str, A
 	l = left.to_dict()
 	r = right.to_dict()
 
-	# 只做核心数值字段 diff（避免 UI 被杂项淹没）
 	fields = {
 		"participants": (l["conversation"].get("participants"), r["conversation"].get("participants")),
 		"messageCountRaw": (l["conversation"].get("messageCountRaw"), r["conversation"].get("messageCountRaw")),

@@ -2,7 +2,6 @@
 
 这里是 app.py 与分析器应当使用的唯一入口：
 - 根据文件后缀选择解析器（JSON / TXT）
-- 按选项过滤系统/撤回
 - 去重并回填统计信息
 - 计算时间范围
 """
@@ -12,7 +11,7 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, Optional
 
-from .core import DedupTracker, FilterOptions, apply_filters, dedup_key
+from .core import DedupTracker, dedup_key
 from .importers import load_conversation_from_json, load_conversation_from_txt
 from .schema import Conversation, LoadResult
 
@@ -27,8 +26,7 @@ def _compute_time_range(conversation: Conversation) -> None:
 
 def load_chat_file(file_path: str, options: Optional[Dict[str, Any]] = None) -> LoadResult:
     options = options or {}
-    include_system = bool(options.get("includeSystem", True))
-    include_recalled = bool(options.get("includeRecalled", True))
+    # 过滤（例如排除系统/撤回）不在导入层做：由热词/上层分析逻辑负责
 
     ext = os.path.splitext(file_path)[1].lower()
 
@@ -41,13 +39,10 @@ def load_chat_file(file_path: str, options: Optional[Dict[str, Any]] = None) -> 
 
     conversation.message_count_raw = len(conversation.messages)
 
-    # 应用过滤是否包含系统/撤回
-    filtered = apply_filters(conversation.messages, FilterOptions(include_system=include_system, include_recalled=include_recalled))
-
     # 去重
     tracker = DedupTracker()
     deduped = []
-    for m in filtered:
+    for m in conversation.messages:
         if tracker.is_duplicate(m):
             continue
 

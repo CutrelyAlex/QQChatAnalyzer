@@ -2,12 +2,13 @@
 
 目标：
 - 把不同来源（JSON/TXT）的聊天记录统一为同一套结构，便于后续分析/展示
-- 参与者主键稳定：同 uid 或同 uin 视为同一人（由 core.py 的规则生成 participant_id）
-- 时间统一为 epoch 毫秒（timestamp_ms），便于排序与统计
+- **标识统一**：优先使用 exporter 提供的 uid 作为唯一标识（JSON 中一定存在）
+    - 为了兼容旧代码，这里仍保留字段名 participant_id，但其值应当等同于 uid（或在 TXT 场景下等同于 uin）
+- 时间统一为 epoch 毫秒（timestamp_ms）
 
 说明：
-- 对于 JSON 中更丰富的细节（资源、回复、系统事件等），优先放入 resources/meta/raw
-- raw/meta 会做裁剪
+- 只保留分析需要的结构化字段（elements/灰条/撤回/回复/@ 等）与少量展示字段
+- 不保存原始 JSON/裁剪后的 raw
 """
 
 from __future__ import annotations
@@ -23,11 +24,18 @@ class Participant:
     uid: Optional[str] = None
     uin: Optional[str] = None
 
+    # 同一 uid/uin 的展示名（群昵称/QQ 名称）是可变的：记录出现过的名字（按出现顺序去重）
+    display_name_history: tuple[str, ...] = ()
+
 
 @dataclass(frozen=True)
 class Mention:
     target_participant_id: Optional[str] = None
     target_name: Optional[str] = None
+    # JSON elements.textElement.atUid（注意：这是 UIN）
+    target_uin: Optional[str] = None
+    # JSON elements.textElement.atNtUid（如存在，为 uid）
+    target_uid: Optional[str] = None
     offset: Optional[int] = None
     length: Optional[int] = None
 
@@ -38,16 +46,12 @@ class ReplyReference:
     target_timestamp_ms: Optional[int] = None
     snippet: Optional[str] = None
 
-
-@dataclass(frozen=True)
-class Resource:
-    # 资源/事件类型（允许扩展；未知类型用 unknown）
-    # 常见：image/audio/video/file/forward/emoji/sticker/redpacket/link/special/unknown
-    type: str
-    name: Optional[str] = None
-    url: Optional[str] = None
-    size_bytes: Optional[int] = None
-    meta: Optional[Dict[str, Any]] = None
+    # JSON replyElement.sourceMsgIdInRecords（可以通过 MsgId 查询）
+    source_msg_id_in_records: Optional[str] = None
+    # JSON replyElement.senderUid（注意：这里是 UIN）
+    source_sender_uin: Optional[str] = None
+    # JSON replyElement.senderUidStr（如存在，为 uid）
+    source_sender_uid: Optional[str] = None
 
 
 @dataclass
@@ -71,12 +75,30 @@ class Message:
 
     message_type: str = "unknown"
 
+    # rawMessage.msgType（按 NTMsgType 枚举理解），保留原始 int
+    nt_msg_type: Optional[int] = None
+
+    # 系统灰条：rawMessage.elements[].grayTipElement.subElementType
+    graytip_subtype: Optional[int] = None
+    # 系统灰条：rawMessage.elements[].grayTipElement.xmlElement.busiType（暂不确定含义，但保留）
+    graytip_xml_busi_type: Optional[str] = None
+
+    # 撤回：操作者信息（uid/uin）
+    recall_operator_uid: Optional[str] = None
+    recall_operator_uin: Optional[str] = None
+
+    # 供现有分析器/词云等使用：从 elements 中拼接得到的“真正说话文本”（TEXT 且 atType=0）
     text: str = ""
+    # content.text（rawMessage 的简化版，仅用于组装 AI 原文，不作为分析输入）
+    content_text: str = ""
+
+    # rawMessage.elements 的统计：elementType -> count
+    element_counts: Dict[int, int] = field(default_factory=dict)
+
     mentions: List[Mention] = field(default_factory=list)
     reply_to: Optional[ReplyReference] = None
-    resources: List[Resource] = field(default_factory=list)
 
-    raw: Optional[Dict[str, Any]] = None
+    # 不保存 raw/json 副本：未来扩展直接加字段 + 加载逻辑即可
 
 
 @dataclass

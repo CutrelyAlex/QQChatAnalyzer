@@ -83,6 +83,36 @@ def legacy_placeholders_for_message(message_type: str, resource_types: list[str]
     return ' '.join(tokens).strip()
 
 
+def _resource_types_from_element_counts(element_counts: dict | None) -> list[str]:
+    """从 element_counts 推断资源类型列表（用于旧分析器/前端占位符）。
+
+    ElementType（来自 QQChatExporter V4）：
+    - 2: 图片 -> image
+    - 3: 文件 -> file
+    - 4: 语音 -> audio
+    - 5: 视频 -> video
+    - 6/11: 表情 -> emoji/sticker（这里统一记为 emoji）
+    """
+
+    if not isinstance(element_counts, dict):
+        return []
+
+    def _n(k: int) -> int:
+        try:
+            return int(element_counts.get(k, 0) or 0)
+        except Exception:
+            return 0
+
+    out: list[str] = []
+    out += ['image'] * _n(2)
+    out += ['file'] * _n(3)
+    out += ['audio'] * _n(4)
+    out += ['video'] * _n(5)
+    # 这里不区分 sticker/emoji，保持简单
+    out += ['emoji'] * (_n(6) + _n(11))
+    return out
+
+
 def load_conversation_and_messages(filename: str, *, options=None):
     """从 texts/ 加载归一化会话，并返回适配现有分析/AI 的消息字典列表。"""
     options = options or {}
@@ -116,15 +146,16 @@ def load_conversation_and_messages(filename: str, *, options=None):
         qq = m.sender_participant_id or 'system'
         sender = m.sender_name or pid_to_name.get(qq, qq) or ('系统' if qq == 'system' else qq)
 
-        resource_types = [getattr(r, 'type', None) for r in (m.resources or [])]
-        resource_types = [str(t) for t in resource_types if t]
+        resource_types = _resource_types_from_element_counts(getattr(m, 'element_counts', None))
 
         mention_targets = []
         for it in (m.mentions or []):
             try:
                 pid = getattr(it, 'target_participant_id', None)
                 name = getattr(it, 'target_name', None)
-                mention_targets.append(pid or name)
+                uin = getattr(it, 'target_uin', None)
+                uid = getattr(it, 'target_uid', None)
+                mention_targets.append(pid or uin or uid or name)
             except Exception:
                 continue
         mention_targets = [str(x) for x in mention_targets if x]

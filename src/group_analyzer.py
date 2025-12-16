@@ -141,6 +141,35 @@ class GroupAnalyzer:
         """
         self.lines_data = []
         self.qq_to_name = {}  # 重新初始化为 {qq: [nickname1, nickname2, ...]} 格式
+
+        def _is_pure_digits_name(s: str) -> bool:
+            s = (s or '').strip()
+            return bool(s) and s.isdigit()
+
+        def _append_sender_name(qq: str, sender: str) -> None:
+            """维护 qq_to_name 的昵称历史。
+
+            规则（尽量符合“用户看到的昵称”）：
+            - 忽略空 sender
+            - 如果历史里已经出现过非纯数字昵称，则不再把纯数字 sender 追加到末尾
+              （避免“昵称被 QQ 数字覆盖”，导致排行展示退化为 QQ）
+            - 仍保持去重（同一个昵称不重复记录）
+            """
+
+            sender = (sender or '').strip()
+            if not qq or not sender:
+                return
+
+            lst = self.qq_to_name.setdefault(qq, [])
+            if lst and lst[-1] == sender:
+                return
+
+            has_non_numeric = any((x or '').strip() and (not _is_pure_digits_name(x)) for x in lst)
+            if has_non_numeric and _is_pure_digits_name(sender):
+                return
+
+            if sender not in lst:
+                lst.append(sender)
         
         for msg in messages:
             qq = str(msg.get('qq', '') or '')
@@ -195,10 +224,7 @@ class GroupAnalyzer:
 
             # 昵称映射：仅记录“非系统消息”的 sender
             if (not is_system) and qq and line_data.sender:
-                if qq not in self.qq_to_name:
-                    self.qq_to_name[qq] = []
-                if line_data.sender not in self.qq_to_name[qq]:
-                    self.qq_to_name[qq].append(line_data.sender)
+                _append_sender_name(qq, line_data.sender)
     
     def analyze(self) -> GroupStats:
         """
@@ -425,11 +451,7 @@ class GroupAnalyzer:
             if not counter:
                 return None
             top_qq, top_cnt = max(counter.items(), key=lambda x: x[1])
-            names = self.qq_to_name.get(top_qq, [top_qq])
-            if isinstance(names, list):
-                name = names[-1] if names else top_qq
-            else:
-                name = names if names else top_qq
+            name = self._get_preferred_name(top_qq)
             return {'qq': top_qq, 'name': name, 'count': int(top_cnt)}
 
         self.stats.top_recaller = build_top_item(recalled_by_user)
@@ -454,12 +476,7 @@ class GroupAnalyzer:
         
         # 构建成员信息 - 处理多个昵称的格式
         def build_member_info(qq, count):
-            names = self.qq_to_name.get(qq, [qq])
-            # 如果是列表，取最后一个（最新的昵称），否则直接使用
-            if isinstance(names, list):
-                name = names[-1] if names else qq
-            else:
-                name = names if names else qq
+            name = self._get_preferred_name(qq)
             return {'qq': qq, 'name': name, 'count': count}
         
         # 分层成员
@@ -480,11 +497,7 @@ class GroupAnalyzer:
         
         # 辅助函数：获取QQ对应的最新昵称
         def get_qq_name(qq):
-            names = self.qq_to_name.get(qq, [qq])
-            if isinstance(names, list):
-                return names[-1] if names else qq
-            else:
-                return names if names else qq
+            return self._get_preferred_name(qq)
         
         # 每小时最活跃用户
         hourly_top_users = {}
@@ -521,6 +534,32 @@ class GroupAnalyzer:
         self.stats.hourly_top_users = hourly_top_users
         self.stats.weekday_top_users = weekday_top_users
         self.stats.weekday_totals = weekday_totals_formatted
+
+    def _get_preferred_name(self, qq: str) -> str:
+        """从 qq_to_name 中挑选更适合展示的昵称。
+
+        优先级：
+        1) 最近出现的“非纯数字昵称”
+        2) 最近出现的任意昵称
+        3) qq 本身
+        """
+
+        qq = str(qq or '')
+        names = self.qq_to_name.get(qq)
+        if isinstance(names, list) and names:
+            for x in reversed(names):
+                s = (x or '').strip()
+                if s and (not s.isdigit()):
+                    return s
+            # 全是数字/空：退回最后一个
+            last = (names[-1] or '').strip()
+            return last or qq
+
+        if isinstance(names, str):
+            s = names.strip()
+            return s or qq
+
+        return qq
     
     def _extract_hot_content(self) -> None:
         """T025: 提取热词"""
