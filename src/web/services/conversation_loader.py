@@ -13,18 +13,15 @@ TEXTS_DIR = Path('texts')
 ALLOWED_SUFFIXES = {'.txt', '.json'}
 
 
-# 进程内缓存：避免同一文件在一次用户会话中被反复解析/适配。
-# key = (filename, options_fingerprint)
 _CONV_CACHE: dict[tuple[str, str], dict[str, Any]] = {}
 
 
 def _freeze_options(options: dict | None) -> str:
-    """把 options 转成稳定的缓存 key（尽量可比较、无需引入额外依赖）。"""
+    """把 options 转成缓存 key"""
 
     if not options:
         return ""
     try:
-        # 简单稳定序列化：按 key 排序，value 走 repr
         items = sorted((str(k), repr(v)) for k, v in options.items())
         return "|".join([f"{k}={v}" for k, v in items])
     except Exception:
@@ -87,7 +84,6 @@ def load_conversation_and_messages(filename: str, *, options=None):
     file_mtime = filepath.stat().st_mtime
     cached = _CONV_CACHE.get(cache_key)
     if cached and cached.get('mtime') == file_mtime:
-        # 注意：下游应把返回值视为只读；若担心被修改，可在调用处自行 copy。
         return cached['conv'], cached['messages'], cached['warnings']
 
     result = load_chat_file(str(filepath), options=options)
@@ -135,13 +131,18 @@ def load_conversation_and_messages(filename: str, *, options=None):
 
         reply_to_qq = message_id_to_sender.get(reply_to_mid) if reply_to_mid else None
 
-        content = m.text or ''
+        # content:
+        # - m.text：用于词云/统计的“干净文本”（通常只来自纯文本 elements）
+        # - m.content_text：用于 AI 的“原文/不干净文本”（可包含占位符等），避免丢失非文本信息
+        content_clean = m.text or ''
+        content_raw = m.content_text or content_clean
 
         messages.append({
             'time': time_str,
             'sender': sender,
             'qq': str(qq),
-            'content': content,
+            'content': content_clean,
+            'content_raw': content_raw,
 
             # structured meta
             'timestamp_ms': int(m.timestamp_ms or 0),

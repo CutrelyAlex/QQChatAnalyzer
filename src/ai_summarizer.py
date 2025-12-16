@@ -60,6 +60,8 @@ class AISummarizer:
     # 上下文Token预算分配（基于模型最大上下文）
     DEFAULT_CONTEXT_BUDGET = 60000  # 默认聊天样本Token预算
     PROMPT_RESERVE = 5000           # 为系统提示词和统计数据保留的Token
+
+    MIN_CHAT_BUDGET_TOKENS = 200
     
     def __init__(self, model: str = None, max_tokens: int = 2000, 
                  api_key: str = None, base_url: str = None,
@@ -174,6 +176,76 @@ class AISummarizer:
                  self.MESSAGE_OVERHEAD
         
         return int(math.ceil(tokens))
+
+    def _chat_budget_tokens(self) -> int:
+        """为聊天样本分配 token 预算。
+        """
+        try:
+            cb = int(self.context_budget or 0)
+        except Exception:
+            cb = 0
+        if cb <= 0:
+            return 0
+        return max(self.MIN_CHAT_BUDGET_TOKENS, int(cb * 0.2))
+
+    @staticmethod
+    def _element_counts_to_tokens(element_counts: Dict[Any, Any]) -> str:
+        """把 element_counts 转成可读的“占位符式原文”。
+
+        目标：即使没有文本 content，也能让聊天样本里看到发生了什么（图片/表情/语音等）。
+        """
+        if not isinstance(element_counts, dict) or not element_counts:
+            return ""
+
+        # 只做少量常用映射；未知元素保留为 Element{type}。
+        label_map = {
+            2: "[图片]",
+            3: "[文件]",
+            4: "[语音]",
+            5: "[视频]",
+            6: "[表情]",
+            7: "[回复]",
+            8: "[系统灰条]",
+            9: "[红包/钱包]",
+            10: "[卡片]",
+            16: "[转发]",
+            14: "[Markdown]",
+            28: "[位置/分享]",
+            44: "[操作栏]",
+        }
+
+        parts: List[str] = []
+        for k, v in element_counts.items():
+            try:
+                kk = int(k)
+            except Exception:
+                continue
+            if kk == 1:
+                # TEXT 不作为“占位符”，避免和 content 重复
+                continue
+            try:
+                count = int(v)
+            except Exception:
+                count = 0
+            if count <= 0:
+                continue
+            label = label_map.get(kk) or f"[Element{kk}]"
+            if count == 1:
+                parts.append(label)
+            else:
+                parts.append(f"{label}x{count}")
+
+        return " ".join(parts)
+
+    def _message_dirty_text(self, msg: Dict[str, Any]) -> str:
+        """为 AI 聊天样本生成“时间 + 不干净文本”的正文部分。"""
+        raw = (msg.get('content_raw') or '').strip()
+        if raw:
+            return raw
+
+        # 退化：没有 raw text 时，用 element_counts 还原“发生了什么”
+        tokens = self._element_counts_to_tokens(msg.get('element_counts') or {})
+        return tokens.strip()
     
     def _sparse_sample_messages(self, messages: List[Dict[str, Any]], 
                                  target_qq: str = None) -> str:
@@ -197,14 +269,11 @@ class AISummarizer:
             return ""
         
         # 可用于聊天记录的Token预算
-        available_budget = self.context_budget - self.PROMPT_RESERVE
+        reserve = min(int(self.PROMPT_RESERVE), max(0, int(self.context_budget) - self._chat_budget_tokens()))
+        available_budget = max(0, int(self.context_budget) - reserve)
 
-        # 预算不足时直接返回空样本
         if available_budget <= 0:
-            logger.warning(
-                f"Context budget too small (context_budget={self.context_budget}, reserve={self.PROMPT_RESERVE}); returning empty chat sample"
-            )
-            return ""
+            available_budget = max(1, self._chat_budget_tokens())
         
         # 如果指定了target_qq，先过滤消息
         if target_qq:
@@ -227,7 +296,7 @@ class AISummarizer:
         total_tokens = 0
         for date_messages in messages_by_date.values():
             for msg in date_messages:
-                content = msg.get('content', '')
+                content = self._message_dirty_text(msg)
                 sender = msg.get('sender', '')
                 time_str = msg.get('time', '')
                 # 估算格式化后的Token数: [time] sender: content
@@ -266,7 +335,9 @@ class AISummarizer:
         for date in selected_dates:
             day_messages = messages_by_date[date]
             day_tokens = sum(
-                self._estimate_message_tokens(f"[{m.get('time', '')}] {m.get('sender', '')}: {m.get('content', '')}")
+                self._estimate_message_tokens(
+                    f"[{m.get('time', '')}] {m.get('sender', '')}: {self._message_dirty_text(m)}"
+                )
                 for m in day_messages
             )
             
@@ -288,7 +359,7 @@ class AISummarizer:
         # 兜底：如果采样后仍然超过预算，再做一次全局均匀采样（保证至少留 1 条）
         sampled_tokens = sum(
             self._estimate_message_tokens(
-                f"[{m.get('time', '')}] {m.get('sender', '')}: {m.get('content', '')}"
+                f"[{m.get('time', '')}] {m.get('sender', '')}: {self._message_dirty_text(m)}"
             )
             for m in sampled_messages
         )
@@ -319,8 +390,9 @@ class AISummarizer:
         for msg in messages:
             time_str = msg.get('time', '')
             sender = msg.get('sender', '')
-            content = msg.get('content', '')
-            if content:  # 只包含有内容的消息
+            content = self._message_dirty_text(msg)
+            # 即使没有纯文本，也尽量用 element_counts 形成占位符，避免 AI 没有任何“聊天内容”可读
+            if content:
                 lines.append(f"[{time_str}] {sender}: {content}")
         return '\n'.join(lines)
     

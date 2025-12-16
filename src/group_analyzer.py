@@ -6,6 +6,8 @@ from collections import defaultdict, Counter
 from datetime import datetime
 from typing import Dict, List, Any
 
+from src.chat_import.enums import ElementType
+
 from .chat_import.txt_importer import LineData
 from .txt_process import cut_words, parse_timestamp, SYSTEM_QQ_NUMBERS, EMOJI_PATTERN, has_link
 
@@ -24,6 +26,7 @@ class GroupStats:
         self.monthly_trend = {}  # {month: count}
         self.hourly_peak = 0
         self.peak_hours = []
+        self.peak_hour = None  # 最活跃小时（只取 1 个，例如 21 表示 21:00）
         
         # 成员分层 - 现在包含 QQ 和昵称
         self.core_members = []      # [{'qq': qq, 'name': name, 'count': count}, ...]
@@ -31,6 +34,7 @@ class GroupStats:
         self.normal_members = []    # 40%-80%
         self.lurkers = []           # Bottom 20%
         self.member_message_count = {}  # {qq: {'name': name, 'count': count}}
+        self.total_members = 0
         
         # 消息类型分析
         self.text_ratio = 0.0
@@ -65,6 +69,48 @@ class GroupStats:
         self.top_emoji_sender = None
         self.top_forward_sender = None
         self.top_file_sender = None
+        self.top_wallet_sender = None
+        self.top_system_sender = None
+        self.top_mention_sender = None
+        self.top_reply_sender = None
+        self.top_media_sender = None
+        self.element_totals: Dict[int, int] = {}
+        self.top_element_senders: Dict[str, Dict[str, Any]] = {}  # {'9': {qq,name,count}, ...}
+
+        # ------------------------------
+        # 各 ElementType 元素数量
+        # ------------------------------
+        self.element_text_count = 0
+        self.element_pic_count = 0
+        self.element_file_count = 0
+        self.element_ptt_count = 0
+        self.element_video_count = 0
+        self.element_face_count = 0
+        self.element_reply_count = 0
+        self.element_greytip_count = 0
+        self.element_wallet_count = 0
+        self.element_ark_count = 0
+        self.element_mface_count = 0
+        self.element_livegift_count = 0
+        self.element_structlongmsg_count = 0
+        self.element_markdown_count = 0
+        self.element_giphy_count = 0
+        self.element_multiforward_count = 0
+        self.element_inlinekeyboard_count = 0
+        self.element_intextgift_count = 0
+        self.element_calendar_count = 0
+        self.element_yologameresult_count = 0
+        self.element_avrecord_count = 0
+        self.element_feed_count = 0
+        self.element_tofurecord_count = 0
+        self.element_acebubble_count = 0
+        self.element_activity_count = 0
+        self.element_tofu_count = 0
+        self.element_facebubble_count = 0
+        self.element_sharelocation_count = 0
+        self.element_tasktopmsg_count = 0
+        self.element_recommendedmsg_count = 0
+        self.element_actionbar_count = 0
         
     def to_dict(self) -> Dict:
         """转换为字典格式"""
@@ -74,6 +120,7 @@ class GroupStats:
             'monthly_trend': self.monthly_trend,
             'hourly_peak': self.hourly_peak,
             'peak_hours': self.peak_hours,
+            'peak_hour': self.peak_hour,
             'core_members': self.core_members,
             'active_members': self.active_members,
             'normal_members': self.normal_members,
@@ -107,6 +154,47 @@ class GroupStats:
             'top_emoji_sender': self.top_emoji_sender,
             'top_forward_sender': self.top_forward_sender,
             'top_file_sender': self.top_file_sender,
+            'top_wallet_sender': self.top_wallet_sender,
+            'top_system_sender': self.top_system_sender,
+            'top_mention_sender': self.top_mention_sender,
+            'top_reply_sender': self.top_reply_sender,
+            'top_media_sender': self.top_media_sender,
+            'element_totals': dict(self.element_totals or {}),
+            'top_element_senders': dict(self.top_element_senders or {}),
+            'total_members': self.total_members,
+
+            # ElementType 全量计数
+            'element_text_count': int(self.element_text_count),
+            'element_pic_count': int(self.element_pic_count),
+            'element_file_count': int(self.element_file_count),
+            'element_ptt_count': int(self.element_ptt_count),
+            'element_video_count': int(self.element_video_count),
+            'element_face_count': int(self.element_face_count),
+            'element_reply_count': int(self.element_reply_count),
+            'element_greytip_count': int(self.element_greytip_count),
+            'element_wallet_count': int(self.element_wallet_count),
+            'element_ark_count': int(self.element_ark_count),
+            'element_mface_count': int(self.element_mface_count),
+            'element_livegift_count': int(self.element_livegift_count),
+            'element_structlongmsg_count': int(self.element_structlongmsg_count),
+            'element_markdown_count': int(self.element_markdown_count),
+            'element_giphy_count': int(self.element_giphy_count),
+            'element_multiforward_count': int(self.element_multiforward_count),
+            'element_inlinekeyboard_count': int(self.element_inlinekeyboard_count),
+            'element_intextgift_count': int(self.element_intextgift_count),
+            'element_calendar_count': int(self.element_calendar_count),
+            'element_yologameresult_count': int(self.element_yologameresult_count),
+            'element_avrecord_count': int(self.element_avrecord_count),
+            'element_feed_count': int(self.element_feed_count),
+            'element_tofurecord_count': int(self.element_tofurecord_count),
+            'element_acebubble_count': int(self.element_acebubble_count),
+            'element_activity_count': int(self.element_activity_count),
+            'element_tofu_count': int(self.element_tofu_count),
+            'element_facebubble_count': int(self.element_facebubble_count),
+            'element_sharelocation_count': int(self.element_sharelocation_count),
+            'element_tasktopmsg_count': int(self.element_tasktopmsg_count),
+            'element_recommendedmsg_count': int(self.element_recommendedmsg_count),
+            'element_actionbar_count': int(self.element_actionbar_count),
         }
 
 
@@ -141,7 +229,11 @@ class GroupAnalyzer:
 
             def _n(k: int) -> int:
                 try:
-                    return int(element_counts.get(k, 0) or 0)
+                    kk = int(k)
+                    v = element_counts.get(kk, None)
+                    if v is None:
+                        v = element_counts.get(str(kk), 0)
+                    return int(v or 0)
                 except Exception:
                     return 0
 
@@ -261,6 +353,14 @@ class GroupAnalyzer:
         file_by_user = defaultdict(int)
         
         # === 单次遍历 ===
+        element_totals = defaultdict(int)
+        system_by_user = defaultdict(int)
+        mention_by_user = defaultdict(int)
+        reply_by_user = defaultdict(int)
+        media_by_user = defaultdict(int)
+        wallet_by_user = defaultdict(int)
+        element_by_user = defaultdict(lambda: defaultdict(int))  # qq -> {ElementType(int): count}
+        
         for i, line_data in enumerate(self.lines_data):
             dt = parsed_times[i]
             qq = line_data.qq
@@ -276,20 +376,47 @@ class GroupAnalyzer:
 
             def _n(k: int) -> int:
                 try:
-                    return int(element_counts.get(k, 0) or 0)
+                    kk = int(k)
+                    v = element_counts.get(kk, None)
+                    if v is None:
+                        v = element_counts.get(str(kk), 0)
+                    return int(v or 0)
                 except Exception:
                     return 0
 
+            # ElementType 全量汇总（注意：element_counts 可能是 str-key，也可能是 int-key）
+            wallet_count = _n(ElementType.WALLET)
+            if wallet_count and qq and (not is_system):
+                wallet_by_user[qq] += wallet_count
+            for key, value in element_counts.items():
+                try:
+                    idx = int(key)
+                    cnt = int(value or 0)
+                except Exception:
+                    continue
+                element_totals[idx] += cnt
+                if qq and (not is_system) and (qq not in SYSTEM_QQ_NUMBERS) and qq != 'system':
+                    element_by_user[qq][idx] += cnt
+
             if is_system:
                 system_count += 1
+            if qq:
+                if is_system:
+                    system_by_user[qq] += 1
             if line_data.is_recall:
                 recalled_count += 1
                 if qq and (not is_system):
                     recalled_by_user[qq] += 1
+            if qq and line_data.is_recall and (not is_system):
+                pass
             if (not is_system) and line_data.mentions:
                 mention_msg_count += 1
+                if qq:
+                    mention_by_user[qq] += 1
             if is_reply:
                 reply_msg_count += 1
+                if qq:
+                    reply_by_user[qq] += 1
 
             # 媒体统计：仅使用 elements + 链接启发式（TXT 没有 link 元素）
             media_types = set()
@@ -312,6 +439,8 @@ class GroupAnalyzer:
                 media_msg_count += 1
                 for t in media_types:
                     media_breakdown[t] += 1
+                if qq:
+                    media_by_user[qq] += 1
             
             # 1. 活跃度指标
             date = line_data.get_date()
@@ -405,6 +534,10 @@ class GroupAnalyzer:
                 hour for hour, count in hourly_count.items() 
                 if count >= max_hour_count * 0.8
             ])
+            try:
+                self.stats.peak_hour = int(max(hourly_count.items(), key=lambda x: x[1])[0])
+            except Exception:
+                self.stats.peak_hour = None
         
         # 成员分层
         self._calculate_member_stratification(member_count)
@@ -445,6 +578,69 @@ class GroupAnalyzer:
         self.stats.top_emoji_sender = build_top_item(emoji_by_user)
         self.stats.top_forward_sender = build_top_item(forward_by_user)
         self.stats.top_file_sender = build_top_item(file_by_user)
+        self.stats.top_wallet_sender = build_top_item(wallet_by_user)
+        self.stats.top_system_sender = build_top_item(system_by_user)
+        self.stats.top_mention_sender = build_top_item(mention_by_user)
+        self.stats.top_reply_sender = build_top_item(reply_by_user)
+        self.stats.top_media_sender = build_top_item(media_by_user)
+        self.stats.element_totals = dict(sorted(element_totals.items()))
+
+        # ElementType 全量字段（与 personal_analyzer 对齐）
+        et = lambda x: int(x)
+        self.stats.element_text_count = int(element_totals.get(et(ElementType.TEXT), 0) or 0)
+        self.stats.element_pic_count = int(element_totals.get(et(ElementType.PIC), 0) or 0)
+        self.stats.element_file_count = int(element_totals.get(et(ElementType.FILE), 0) or 0)
+        self.stats.element_ptt_count = int(element_totals.get(et(ElementType.PTT), 0) or 0)
+        self.stats.element_video_count = int(element_totals.get(et(ElementType.VIDEO), 0) or 0)
+        self.stats.element_face_count = int(element_totals.get(et(ElementType.FACE), 0) or 0)
+        self.stats.element_reply_count = int(element_totals.get(et(ElementType.REPLY), 0) or 0)
+        self.stats.element_greytip_count = int(element_totals.get(et(ElementType.GreyTip), 0) or 0)
+        self.stats.element_wallet_count = int(element_totals.get(et(ElementType.WALLET), 0) or 0)
+        self.stats.element_ark_count = int(element_totals.get(et(ElementType.ARK), 0) or 0)
+        self.stats.element_mface_count = int(element_totals.get(et(ElementType.MFACE), 0) or 0)
+        self.stats.element_livegift_count = int(element_totals.get(et(ElementType.LIVEGIFT), 0) or 0)
+        self.stats.element_structlongmsg_count = int(element_totals.get(et(ElementType.STRUCTLONGMSG), 0) or 0)
+        self.stats.element_markdown_count = int(element_totals.get(et(ElementType.MARKDOWN), 0) or 0)
+        self.stats.element_giphy_count = int(element_totals.get(et(ElementType.GIPHY), 0) or 0)
+        self.stats.element_multiforward_count = int(element_totals.get(et(ElementType.MULTIFORWARD), 0) or 0)
+        self.stats.element_inlinekeyboard_count = int(element_totals.get(et(ElementType.INLINEKEYBOARD), 0) or 0)
+        self.stats.element_intextgift_count = int(element_totals.get(et(ElementType.INTEXTGIFT), 0) or 0)
+        self.stats.element_calendar_count = int(element_totals.get(et(ElementType.CALENDAR), 0) or 0)
+        self.stats.element_yologameresult_count = int(element_totals.get(et(ElementType.YOLOGAMERESULT), 0) or 0)
+        self.stats.element_avrecord_count = int(element_totals.get(et(ElementType.AVRECORD), 0) or 0)
+        self.stats.element_feed_count = int(element_totals.get(et(ElementType.FEED), 0) or 0)
+        self.stats.element_tofurecord_count = int(element_totals.get(et(ElementType.TOFURECORD), 0) or 0)
+        self.stats.element_acebubble_count = int(element_totals.get(et(ElementType.ACEBUBBLE), 0) or 0)
+        self.stats.element_activity_count = int(element_totals.get(et(ElementType.ACTIVITY), 0) or 0)
+        self.stats.element_tofu_count = int(element_totals.get(et(ElementType.TOFU), 0) or 0)
+        self.stats.element_facebubble_count = int(element_totals.get(et(ElementType.FACEBUBBLE), 0) or 0)
+        self.stats.element_sharelocation_count = int(element_totals.get(et(ElementType.SHARELOCATION), 0) or 0)
+        self.stats.element_tasktopmsg_count = int(element_totals.get(et(ElementType.TASKTOPMSG), 0) or 0)
+        self.stats.element_recommendedmsg_count = int(element_totals.get(et(ElementType.RECOMMENDEDMSG), 0) or 0)
+        self.stats.element_actionbar_count = int(element_totals.get(et(ElementType.ACTIONBAR), 0) or 0)
+
+        # 每个 ElementType “谁发得最多”（成员页展示）
+        top_element_senders: Dict[str, Dict[str, Any]] = {}
+        for et_id, total in element_totals.items():
+            if not total:
+                continue
+            best_qq = None
+            best_cnt = 0
+            for qq2, by_et in element_by_user.items():
+                cnt = int(by_et.get(int(et_id), 0) or 0)
+                if cnt > best_cnt:
+                    best_cnt = cnt
+                    best_qq = qq2
+            if best_qq and best_cnt > 0:
+                names = self.qq_to_name.get(best_qq, [best_qq])
+                if isinstance(names, list):
+                    name = names[-1] if names else best_qq
+                else:
+                    name = names if names else best_qq
+                top_element_senders[str(int(et_id))] = {'qq': best_qq, 'name': name, 'count': int(best_cnt)}
+        self.stats.top_element_senders = top_element_senders
+
+        self.stats.total_members = len(member_count)
     
     def _calculate_member_stratification(self, member_count: Dict[str, int]) -> None:
         """计算成员分层（从单次遍历的结果中）"""

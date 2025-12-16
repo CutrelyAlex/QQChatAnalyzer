@@ -149,6 +149,67 @@ document.addEventListener('DOMContentLoaded', () => {
 function initializeUI() {
     // UI初始化
     updateAIPanel();
+    initializeSubtabs();
+}
+
+// ============ 子页签（subtabs） ============
+
+function initializeSubtabs() {
+    document.querySelectorAll('.subtabs[data-scope]').forEach(container => {
+        const scope = container.getAttribute('data-scope');
+        if (!scope) return;
+
+        const tabs = Array.from(container.querySelectorAll('.subtab[data-subtab]'));
+        if (!tabs.length) return;
+
+        // 点击切换
+        tabs.forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (btn.classList.contains('is-disabled')) return;
+                setActiveSubtab(scope, btn.getAttribute('data-subtab'));
+            });
+        });
+
+        // 初始化：按 is-active 或第一个
+        const active = tabs.find(t => t.classList.contains('is-active')) || tabs[0];
+        if (active && !active.classList.contains('is-disabled')) {
+            setActiveSubtab(scope, active.getAttribute('data-subtab'), { silent: true });
+        }
+    });
+}
+
+function setActiveSubtab(scope, subtab, opts = {}) {
+    const silent = !!opts.silent;
+    if (!scope || !subtab) return;
+
+    // 激活按钮
+    const container = document.querySelector(`.subtabs[data-scope="${CSS.escape(scope)}"]`);
+    if (!container) return;
+
+    const tabs = Array.from(container.querySelectorAll('.subtab[data-subtab]'));
+    for (const t of tabs) {
+        const key = t.getAttribute('data-subtab');
+        if (key === subtab) t.classList.add('is-active');
+        else t.classList.remove('is-active');
+    }
+
+    // 切换面板
+    const panels = Array.from(document.querySelectorAll(`.subtab-panel[data-scope="${CSS.escape(scope)}"][data-subtab-panel]`));
+    for (const p of panels) {
+        const key = p.getAttribute('data-subtab-panel');
+        p.hidden = key !== subtab;
+    }
+
+    if (!silent) {
+        try {
+            if (typeof window.onSubtabActivated === 'function') {
+                window.onSubtabActivated(scope, subtab);
+            }
+        } catch (e) {
+            // 不影响主流程
+            console.warn('[Subtabs] onSubtabActivated failed:', e);
+        }
+    }
 }
 
 function bindEvents() {

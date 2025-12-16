@@ -72,6 +72,7 @@ function hideProgress(type, success = true) {
 let charts = {
     timeDistribution: null,
     weekly: null,
+    weekday: null,
     monthlyTrend: null,
     memberRanking: null,
     messageType: null
@@ -153,6 +154,45 @@ function drawWeeklyChart(monthlyMessages) {
             maintainAspectRatio: false,
             plugins: {
                 legend: { display: true }
+            },
+            scales: {
+                y: { beginAtZero: true }
+            }
+        }
+    });
+}
+
+function drawWeekdayChart(weekdayMessages) {
+    // 0=周一 ... 6=周日
+    const ctx = document.getElementById('weekday-chart');
+    if (!ctx) return;
+
+    if (charts.weekday) charts.weekday.destroy();
+
+    const labels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+    const arr = Array.isArray(weekdayMessages) ? weekdayMessages : [];
+    const data = labels.map((_, i) => Number(arr[i] ?? 0) || 0);
+
+    const colors = ['#ff6b6b', '#ffa94d', '#ffd43b', '#69db7c', '#38d9a9', '#74c0fc', '#9775fa'];
+
+    charts.weekday = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [{
+                label: '消息数',
+                data,
+                backgroundColor: colors.map(c => `${c}cc`),
+                borderColor: colors,
+                borderWidth: 1,
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }
             },
             scales: {
                 y: { beginAtZero: true }

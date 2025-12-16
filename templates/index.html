@@ -66,35 +66,41 @@
                     <div class="tab-header">
                         <h2>个人分析</h2>
                         <p class="tab-description">分析特定成员的聊天活动、消息内容、互动行为等</p>
-
-                        <!-- 规划：个人分析子功能 Tab（暂为UI占位，不影响现有功能） -->
-                        <div class="subtabs" aria-label="个人分析子功能（规划）">
-                            <div class="subtab is-active">概览</div>
-                            <div class="subtab is-disabled">趋势</div>
-                            <div class="subtab is-disabled">内容</div>
-                            <div class="subtab is-disabled">洞察</div>
-                        </div>
                     </div>
                     <div class="tab-body">
-                        <div class="input-group">
-                            <label for="qq-input">成员查询:</label>
-                            <input type="text" id="qq-input" placeholder="输入：uin/uid/成员ID/昵称（支持模糊匹配），或从下拉选择" list="qq-list">
-                            <datalist id="qq-list"></datalist>
-                            <button id="personal-analyze-btn" class="btn btn-primary" disabled>
-                                分析个人
-                            </button>
-                        </div>
-
-                        <!-- 分析进度条 -->
-                        <div id="personal-progress" class="progress-container" style="display: none;">
-                            <div class="progress-bar">
-                                <div class="progress-fill" id="personal-progress-fill"></div>
+                        <div class="analysis-toolbar">
+                            <div class="input-group" style="margin-bottom: 0;">
+                                <label for="qq-input">成员查询:</label>
+                                <input type="text" id="qq-input" placeholder="输入：uin/uid/成员ID/昵称（支持模糊匹配），或从下拉选择" list="qq-list">
+                                <datalist id="qq-list"></datalist>
+                                <button id="personal-analyze-btn" class="btn btn-primary" disabled>
+                                    分析个人
+                                </button>
+                                <button id="save-personal-cache-btn" class="btn btn-secondary" style="display: none;">
+                                    💾 保存分析数据
+                                </button>
                             </div>
-                            <div class="progress-text" id="personal-progress-text">正在分析中...</div>
+
+                            <!-- 分析进度条 -->
+                            <div id="personal-progress" class="progress-container" style="display: none; margin-top: 10px;">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="personal-progress-fill"></div>
+                                </div>
+                                <div class="progress-text" id="personal-progress-text">正在分析中...</div>
+                            </div>
                         </div>
 
-                        <div id="personal-stats" class="stats-container" style="display: none;">
-                            <div class="stats-grid">
+                        <div class="subtabs" data-scope="personal" aria-label="个人分析子功能">
+                            <button class="subtab is-active" type="button" data-subtab="overview">概览</button>
+                            <button class="subtab" type="button" data-subtab="trend">趋势</button>
+                            <button class="subtab" type="button" data-subtab="content">内容</button>
+                            <button class="subtab is-disabled" type="button" data-subtab="insights" title="规划中">洞察</button>
+                        </div>
+
+                        <div class="subtab-panels">
+                                    <section class="subtab-panel" data-scope="personal" data-subtab-panel="overview">
+                                        <div id="personal-stats" class="stats-container" style="display: none;">
+                                            <div class="stats-grid">
                                 <div class="stat-card">
                                     <div class="stat-icon">👤</div>
                                     <div class="stat-content">
@@ -123,6 +129,29 @@
                                         <div class="stat-value" id="stat-active-days">-</div>
                                     </div>
                                 </div>
+
+                                <div class="stat-card">
+                                    <div class="stat-icon">🟢</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">首次发言</div>
+                                        <div class="stat-value" id="stat-first-message-date">-</div>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">🔴</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">最后发言</div>
+                                        <div class="stat-value" id="stat-last-message-date">-</div>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">🧼</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">有文本消息(干净)</div>
+                                        <div class="stat-value" id="stat-clean-text-msgs">-</div>
+                                    </div>
+                                </div>
+
                                 <div class="stat-card">
                                     <div class="stat-icon">⏰</div>
                                     <div class="stat-content">
@@ -228,27 +257,49 @@
                                         <div class="stat-value" id="stat-recall-count">-</div>
                                     </div>
                                 </div>
-                            </div>
-                        </div>
+                                            </div>
 
-                        <div id="personal-charts" style="display: none;">
-                            <div class="chart-container">
-                                <h3>时段分布</h3>
-                                <canvas id="time-dist-chart"></canvas>
-                            </div>
-                            <div class="chart-container">
-                                <h3>月发言趋势</h3>
-                                <canvas id="weekly-chart"></canvas>
-                            </div>
-                            <div class="chart-container">
-                                <h3>🔥 个人热词榜</h3>
-                                <div id="personal-hot-words" class="hot-words-container"></div>
-                            </div>
+                                            <div class="chart-container" style="margin-top: 12px;">
+                                                <h3>结构化元素统计（ElementType）</h3>
+                                                <div id="personal-element-stats" class="kv-grid"></div>
+                                            </div>
+                                        </div>
+                                    </section>
 
-                            <!-- 保存分析数据按钮 -->
-                            <button id="save-personal-cache-btn" class="btn btn-secondary" style="margin-top: 15px; display: none;">
-                                💾 保存分析数据
-                            </button>
+                                    <section class="subtab-panel" data-scope="personal" data-subtab-panel="trend" hidden>
+                                        <div id="personal-trends" style="display: none;">
+                                            <div class="module-grid">
+                                                <div class="chart-container">
+                                                    <h3>时段分布</h3>
+                                                    <canvas id="time-dist-chart"></canvas>
+                                                </div>
+                                                <div class="chart-container">
+                                                    <h3>月发言趋势</h3>
+                                                    <canvas id="weekly-chart"></canvas>
+                                                </div>
+                                                <div class="chart-container">
+                                                    <h3>星期分布</h3>
+                                                    <canvas id="weekday-chart"></canvas>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </section>
+
+                                    <section class="subtab-panel" data-scope="personal" data-subtab-panel="content" hidden>
+                                        <div id="personal-content" style="display: none;">
+                                            <div class="module-grid">
+                                                <div class="chart-container">
+                                                    <h3>🔥 个人热词榜</h3>
+                                                    <div id="personal-hot-words" class="hot-words-container"></div>
+                                                </div>
+
+                                                <div class="chart-container">
+                                                    <h3>🤝 互动对象 Top</h3>
+                                                    <div id="personal-top-interactions" class="simple-list"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </section>
                         </div>
                     </div>
                 </div>
@@ -258,29 +309,33 @@
                     <div class="tab-header">
                         <h2>群体分析</h2>
                         <p class="tab-description">分析整个群的活动趋势、成员排行、热门话题等</p>
-
-                        <!-- 规划：群体分析子功能 Tab -->
-                        <div class="subtabs" aria-label="群体分析子功能（规划）">
-                            <div class="subtab is-active">概览</div>
-                            <div class="subtab is-disabled">趋势</div>
-                            <div class="subtab is-disabled">成员</div>
-                            <div class="subtab is-disabled">结构化事件</div>
-                        </div>
                     </div>
                     <div class="tab-body">
-                        <button id="group-analyze-btn" class="btn btn-primary">
-                            分析群体数据
-                        </button>
-
-                        <!-- 分析进度条 -->
-                        <div id="group-progress" class="progress-container" style="display: none;">
-                            <div class="progress-bar">
-                                <div class="progress-fill" id="group-progress-fill"></div>
+                        <div class="analysis-toolbar">
+                            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                                <button id="group-analyze-btn" class="btn btn-primary">分析群体数据</button>
+                                <button id="save-group-cache-btn" class="btn btn-secondary" style="display: none;">💾 保存分析数据</button>
                             </div>
-                            <div class="progress-text" id="group-progress-text">正在分析中...</div>
+
+                            <!-- 分析进度条 -->
+                            <div id="group-progress" class="progress-container" style="display: none; margin-top: 10px;">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="group-progress-fill"></div>
+                                </div>
+                                <div class="progress-text" id="group-progress-text">正在分析中...</div>
+                            </div>
                         </div>
 
-                        <div id="group-stats" class="stats-container" style="display: none;">
+                        <div class="subtabs" data-scope="group" aria-label="群体分析子功能">
+                            <button class="subtab is-active" type="button" data-subtab="overview">概览</button>
+                            <button class="subtab" type="button" data-subtab="trend">趋势</button>
+                            <button class="subtab" type="button" data-subtab="members">成员</button>
+                            <button class="subtab" type="button" data-subtab="content">内容</button>
+                        </div>
+
+                        <div class="subtab-panels">
+                                    <section class="subtab-panel" data-scope="group" data-subtab-panel="overview">
+                                        <div id="group-stats" class="stats-container" style="display: none;">
                             <div class="stats-grid">
                                 <div class="stat-card">
                                     <div class="stat-icon">💬</div>
@@ -310,6 +365,11 @@
                                         <div class="stat-value" id="stat-peak-hour">-</div>
                                     </div>
                                 </div>
+                            </div>
+
+                            <div class="chart-container" style="margin-top: 12px;">
+                                <h3>结构化元素统计（ElementType）</h3>
+                                <div id="group-element-stats" class="kv-grid"></div>
                             </div>
 
                             <!-- 结构化元数据统计 -->
@@ -388,48 +448,75 @@
                                         <div class="stat-value" id="stat-top-file-sender">-</div>
                                     </div>
                                 </div>
-                            </div>
-                        </div>
 
-                        <div id="group-charts" style="display: none;">
-                            <div class="chart-container">
-                                <h3>月度消息趋势</h3>
-                                <canvas id="monthly-trend-chart"></canvas>
+                                <div class="stat-card">
+                                    <div class="stat-icon">🧧</div>
+                                    <div class="stat-content">
+                                        <div class="stat-label">红包/钱包最多</div>
+                                        <div class="stat-value" id="stat-top-wallet-sender">-</div>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="chart-container">
-                                <h3>成员活跃排行</h3>
-                                <canvas id="member-ranking-chart"></canvas>
-                            </div>
-                            <div class="chart-container">
-                                <h3>🔥 群热词榜</h3>
-                                <div id="group-hot-words" class="hot-words-container"></div>
-                            </div>
-                            <div class="chart-container">
-                                <h3>消息类型分布</h3>
-                                <canvas id="message-type-chart"></canvas>
-                            </div>
+                                        </div>
+                                    </section>
 
-                            <!-- 新增：时段活跃分析 -->
-                            <div class="chart-container">
-                                <h3>每小时最活跃用户</h3>
-                                <div id="hourly-top-users" class="time-analysis-grid"></div>
-                            </div>
+                                    <section class="subtab-panel" data-scope="group" data-subtab-panel="trend" hidden>
+                                        <div id="group-trends" style="display: none;">
+                                            <div class="module-grid">
+                                                <div class="chart-container">
+                                                    <h3>月度消息趋势</h3>
+                                                    <canvas id="monthly-trend-chart"></canvas>
+                                                </div>
+                                                <div class="chart-container">
+                                                    <h3>消息类型分布</h3>
+                                                    <canvas id="message-type-chart"></canvas>
+                                                </div>
+                                                <div class="chart-container">
+                                                    <h3>全年各星期的某天消息统计</h3>
+                                                    <div id="weekday-totals" class="weekday-totals-chart"></div>
+                                                    <canvas id="weekday-totals-chart"></canvas>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </section>
 
-                            <div class="chart-container">
-                                <h3>每周各日最活跃用户</h3>
-                                <div id="weekday-top-users" class="weekday-analysis"></div>
-                            </div>
+                                    <section class="subtab-panel" data-scope="group" data-subtab-panel="members" hidden>
+                                        <div id="group-members" style="display: none;">
+                                            <div class="module-grid">
+                                                <div class="chart-container">
+                                                    <h3>各种最多的人（含结构化/元素）</h3>
+                                                    <div id="group-top-metrics" class="simple-list"></div>
+                                                </div>
 
-                            <div class="chart-container">
-                                <h3>全年各星期的某天消息统计</h3>
-                                <div id="weekday-totals" class="weekday-totals-chart"></div>
-                                <canvas id="weekday-totals-chart"></canvas>
-                            </div>
+                                                <div class="chart-container">
+                                                    <h3>成员活跃排行</h3>
+                                                    <canvas id="member-ranking-chart"></canvas>
+                                                </div>
 
-                            <!-- 保存分析数据按钮 -->
-                            <button id="save-group-cache-btn" class="btn btn-secondary" style="margin-top: 15px; display: none;">
-                                💾 保存分析数据
-                            </button>
+                                                <!-- 新增：时段活跃分析 -->
+                                                <div class="chart-container span-2">
+                                                    <h3>每小时最活跃用户</h3>
+                                                    <div id="hourly-top-users" class="time-analysis-grid"></div>
+                                                </div>
+
+                                                <div class="chart-container span-2">
+                                                    <h3>每周各日最活跃用户</h3>
+                                                    <div id="weekday-top-users" class="weekday-analysis"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </section>
+
+                                    <section class="subtab-panel" data-scope="group" data-subtab-panel="content" hidden>
+                                        <div id="group-content" style="display: none;">
+                                            <div class="module-grid">
+                                                <div class="chart-container span-2">
+                                                    <h3>🔥 群热词榜</h3>
+                                                    <div id="group-hot-words" class="hot-words-container"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </section>
                         </div>
                     </div>
                 </div>
@@ -439,63 +526,69 @@
                     <div class="tab-header">
                         <h2>社交网络分析</h2>
                         <p class="tab-description">可视化成员之间的互动关系网络</p>
-
-                        <!-- 网络分析子功能 Tab-->
-                        <div class="subtabs" aria-label="网络分析子功能">
-                            <div class="subtab is-active">网络图</div>
-                        </div>
                     </div>
                     <div class="tab-body">
-                        <!-- 网络图控制面板 - 在分析前设置 -->
-                        <div class="network-controls">
-                            <div class="control-panel">
-                                <div class="control-group">
-                                    <label class="control-label">
-                                        <span class="control-icon">🔗</span>
-                                        <span>最大节点数: <strong id="max-nodes-value">100</strong></span>
-                                    </label>
-                                    <input type="range" id="max-nodes-slider" class="control-slider" min="1" max="2000" value="100" step="1">
-                                    <div class="control-range-labels">
-                                        <span>1</span>
-                                        <span>2000</span>
+                        <div class="analysis-toolbar">
+                            <!-- 网络图控制面板 - 在分析前设置 -->
+                            <div class="network-controls">
+                                <div class="control-panel">
+                                    <div class="control-group">
+                                        <label class="control-label">
+                                            <span class="control-icon">🔗</span>
+                                            <span>最大节点数: <strong id="max-nodes-value">100</strong></span>
+                                        </label>
+                                        <input type="range" id="max-nodes-slider" class="control-slider" min="1" max="2000" value="100" step="1">
+                                        <div class="control-range-labels">
+                                            <span>1</span>
+                                            <span>2000</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="control-group">
+                                        <label class="control-label">
+                                            <span class="control-icon">➡️</span>
+                                            <span>最大边数: <strong id="max-edges-value">300</strong></span>
+                                        </label>
+                                        <input type="range" id="max-edges-slider" class="control-slider" min="100" max="9999" value="300" step="1">
+                                        <div class="control-range-labels">
+                                            <span>100</span>
+                                            <span>9999</span>
+                                        </div>
                                     </div>
                                 </div>
+                            </div>
 
-                                <div class="control-group">
-                                    <label class="control-label">
-                                        <span class="control-icon">➡️</span>
-                                        <span>最大边数: <strong id="max-edges-value">300</strong></span>
-                                    </label>
-                                    <input type="range" id="max-edges-slider" class="control-slider" min="100" max="9999" value="300" step="1">
-                                    <div class="control-range-labels">
-                                        <span>100</span>
-                                        <span>9999</span>
-                                    </div>
+                            <div class="network-layout-actions" style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0;">
+                                <button id="network-analyze-btn" class="btn btn-primary">生成网络图</button>
+                                <button id="save-network-cache-btn" class="btn btn-secondary" style="display: none;">💾 保存分析数据</button>
+                                <button id="layout-circle-btn" class="btn btn-secondary" type="button" title="圆形排布">圆形排布</button>
+                                <button id="layout-tree-btn" class="btn btn-secondary" type="button" title="树状排布">树状排布(点击节点整理)</button>
+                                <button id="layout-smart-btn" class="btn btn-secondary" type="button" title="智能排布">散落排布</button>
+
+                                <div class="network-search" style="display: flex; gap: 8px; align-items: center; margin-left: auto;">
+                                    <input id="network-node-search" class="network-search-input" type="text" placeholder="搜索昵称或QQ号..." autocomplete="off" />
+                                    <button id="network-node-search-btn" class="btn btn-secondary" type="button" title="搜索并居中到对应节点">搜索居中</button>
                                 </div>
                             </div>
-                        </div>
 
-                        <div class="network-layout-actions" style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0;">
-                            <button id="network-analyze-btn" class="btn btn-primary">生成网络图</button>
-                            <button id="layout-circle-btn" class="btn btn-secondary" type="button" title="圆形排布">圆形排布</button>
-                            <button id="layout-tree-btn" class="btn btn-secondary" type="button" title="树状排布">树状排布(点击节点整理)</button>
-                            <button id="layout-smart-btn" class="btn btn-secondary" type="button" title="智能排布">散落排布</button>
-
-                            <div class="network-search" style="display: flex; gap: 8px; align-items: center; margin-left: auto;">
-                                <input id="network-node-search" class="network-search-input" type="text" placeholder="搜索昵称或QQ号..." autocomplete="off" />
-                                <button id="network-node-search-btn" class="btn btn-secondary" type="button" title="搜索并居中到对应节点">搜索居中</button>
+                            <!-- 分析进度条 -->
+                            <div id="network-progress" class="progress-container" style="display: none; margin-top: 10px;">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="network-progress-fill"></div>
+                                </div>
+                                <div class="progress-text" id="network-progress-text">正在分析中（会稍微久一些）...</div>
                             </div>
                         </div>
 
-                        <!-- 分析进度条 -->
-                        <div id="network-progress" class="progress-container" style="display: none;">
-                            <div class="progress-bar">
-                                <div class="progress-fill" id="network-progress-fill"></div>
-                            </div>
-                            <div class="progress-text" id="network-progress-text">正在分析中（会稍微久一些）...</div>
+                        <div class="subtabs" data-scope="network" aria-label="网络分析子功能">
+                            <button class="subtab" type="button" data-subtab="overview">概览</button>
+                            <button class="subtab is-active" type="button" data-subtab="graph">网络图</button>
+                            <button class="subtab" type="button" data-subtab="content">内容</button>
                         </div>
 
-                        <div id="network-stats" class="stats-container" style="display: none;">
+                        <div class="subtab-panels">
+                                    <section class="subtab-panel" data-scope="network" data-subtab-panel="overview" hidden>
+                                        <div id="network-stats" class="stats-container" style="display: none;">
                             <div class="stats-grid">
                                 <div class="stat-card">
                                     <div class="stat-icon">🔗</div>
@@ -526,16 +619,22 @@
                                     </div>
                                 </div>
                             </div>
-                        </div>
+                                        </div>
+                                    </section>
 
-                        <div id="network-graph-container" style="display: none;">
-                            <div id="network-graph" style="width: 100%; height: 600px; border: 1px solid #ddd; border-radius: 8px;"></div>
-                        </div>
+                                    <section class="subtab-panel" data-scope="network" data-subtab-panel="graph">
+                                        <div id="network-graph-container" style="display: none;">
+                                            <div id="network-graph" style="width: 100%; height: 600px; border: 1px solid #ddd; border-radius: 8px;"></div>
+                                        </div>
+                                    </section>
 
-                        <!-- 保存分析数据按钮 -->
-                        <button id="save-network-cache-btn" class="btn btn-secondary" style="margin-top: 15px; display: none;">
-                            💾 保存分析数据
-                        </button>
+                                    <section class="subtab-panel" data-scope="network" data-subtab-panel="content" hidden>
+                                        <div class="chart-container">
+                                            <h3>说明</h3>
+                                            <div style="color: #666;">可在顶部保存分析数据，供 AI 总结使用。</div>
+                                        </div>
+                                    </section>
+                        </div>
                     </div>
                 </div>
 

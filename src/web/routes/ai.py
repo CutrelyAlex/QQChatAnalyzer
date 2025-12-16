@@ -1,5 +1,7 @@
 import json
 import logging
+from datetime import datetime
+from pathlib import Path
 
 from flask import jsonify, request
 
@@ -88,8 +90,7 @@ def generate_summary():
     try:
         data = request.get_json() or {}
 
-        if not Config.OPENAI_API_KEY:
-            return jsonify({'success': False, 'error': 'AI服务未配置，请设置 OPENAI_API_KEY 环境变量'}), 503
+        export_prompt_only = bool(data.get('export_prompt_only') or data.get('exportPromptOnly'))
 
         ctx = prepare_ai_summary_context(data)
 
@@ -106,9 +107,6 @@ def generate_summary():
             top_p=ctx['top_p'],
         )
 
-        if not summarizer.is_available():
-            return jsonify({'success': False, 'error': 'AI服务未配置，请设置 OPENAI_API_KEY 环境变量'}), 503
-
         prompts = summarizer.build_prompts(
             summary_type=ctx['summary_type'],
             stats=ctx['stats'],
@@ -118,6 +116,45 @@ def generate_summary():
             qq=ctx['qq'],
             chat_sample=ctx['chat_sample'],
         )
+
+        # 仅导出 prompt：用于 e2e 流程验证（不触发外部请求，不依赖 OPENAI_API_KEY）
+        if export_prompt_only:
+            export_dir = Path('exports') / 'ai_prompts'
+            export_dir.mkdir(parents=True, exist_ok=True)
+
+            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+            safe_name = str(ctx.get('filename') or 'unknown').replace('\\', '_').replace('/', '_').replace(':', '_')
+            out_path = export_dir / f"ai_prompt_{prompts.get('normalized_type','summary')}_{safe_name}_{ts}.json"
+
+            payload = {
+                'exported_at': datetime.now().isoformat(),
+                'filename': ctx.get('filename'),
+                'summary_type': prompts.get('normalized_type') or ctx.get('summary_type'),
+                'model': summarizer.model,
+                'temperature': summarizer.temperature,
+                'top_p': summarizer.top_p,
+                'max_tokens': ctx.get('max_tokens'),
+                'context_budget': ctx.get('context_budget'),
+                'messages': [
+                    {"role": "system", "content": prompts.get('system_prompt', '')},
+                    {"role": "user", "content": prompts.get('user_prompt', '')},
+                ],
+            }
+
+            with open(out_path, 'w', encoding='utf-8') as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+
+            return jsonify({
+                'success': True,
+                'export_prompt_only': True,
+                'export_path': str(out_path).replace('\\', '/'),
+                'normalized_type': payload['summary_type'],
+                'model': payload['model'],
+            })
+
+        # 非导出模式：需要真实 OpenAI 调用
+        if not Config.OPENAI_API_KEY or (not summarizer.is_available()):
+            return jsonify({'success': False, 'error': 'AI服务未配置，请设置 OPENAI_API_KEY 环境变量'}), 503
 
         logger.info(
             f"Generating {prompts['normalized_type']} AI summary for {ctx.get('filename')} "

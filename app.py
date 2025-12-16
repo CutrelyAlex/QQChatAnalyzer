@@ -37,7 +37,6 @@ CORS(app, resources={
 app.config.from_object(Config)
 
 # 创建必要的目录
-Path('uploads').mkdir(exist_ok=True)
 Path('exports').mkdir(exist_ok=True)
 
 # ============ 错误处理 ============
