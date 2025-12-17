@@ -12,8 +12,6 @@ _CHAT_EXAMPLES_CACHE = {
     # filename: {"mtime": float, "records": [ {timestamp,sender,qq,clean_text}, ... ]}
 }
 
-_CHAT_EXAMPLES_CLEANER_VERSION = 4
-
 
 def get_chat_examples():
     """获取包含某个热词的聊天记录示例（2-4条）"""
@@ -47,7 +45,7 @@ def get_chat_examples():
 
         file_mtime = filepath.stat().st_mtime
         cached = _CHAT_EXAMPLES_CACHE.get(filename)
-        if cached and cached.get('mtime') == file_mtime and cached.get('ver') == _CHAT_EXAMPLES_CLEANER_VERSION:
+        if cached and cached.get('mtime') == file_mtime:
             records = cached.get('records', [])
         else:
             _conv, messages, _warnings = load_conversation_and_messages(filename)
@@ -58,10 +56,9 @@ def get_chat_examples():
                     'timestamp': m.get('time', ''),
                     'sender': m.get('sender', ''),
                     'qq': m.get('qq', ''),
-                    # 新结构：导入层已提供 clean_text（message['content']），无需二次清理
                     'clean_text': content.strip() if content else '',
                 })
-            _CHAT_EXAMPLES_CACHE[filename] = {'mtime': file_mtime, 'ver': _CHAT_EXAMPLES_CLEANER_VERSION, 'records': records}
+            _CHAT_EXAMPLES_CACHE[filename] = {'mtime': file_mtime, 'records': records}
 
         examples = []
         matched = 0

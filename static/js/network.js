@@ -947,7 +947,6 @@ function initNetworkLayoutButtons() {
         }
     };
 
-    // Expose for default layout on first render
     window.applyTreeLayout = applyTreeLayout;
 
     const applySmartLayout = () => {

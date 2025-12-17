@@ -131,9 +131,7 @@ def load_conversation_and_messages(filename: str, *, options=None):
 
         reply_to_qq = message_id_to_sender.get(reply_to_mid) if reply_to_mid else None
 
-        # content:
-        # - m.text：用于词云/统计的“干净文本”（通常只来自纯文本 elements）
-        # - m.content_text：用于 AI 的“原文/不干净文本”（可包含占位符等），避免丢失非文本信息
+
         content_clean = m.text or ''
         content_raw = m.content_text or content_clean
 

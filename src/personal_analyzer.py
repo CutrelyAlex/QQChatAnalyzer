@@ -445,7 +445,7 @@ class PersonalAnalyzer:
         # 个人热词
         if clean_lines_for_hotwords:
             try:
-                _, words_top = cut_words(clean_lines_for_hotwords, top_words_num=20, nicknames=all_nicknames)
+                _, words_top = cut_words(clean_lines_for_hotwords, top_words_num=50, nicknames=all_nicknames)
                 stats.top_words = words_top
             except Exception:
                 stats.top_words = []

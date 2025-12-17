@@ -350,7 +350,6 @@ function renderGroupOverview(stats) {
 
     setText('stat-total-messages', stats.total_messages);
 
-    // 成员数：优先用后端给的 total_members（更稳）
     const totalMembers = (stats.total_members ?? null);
     if (totalMembers !== null && totalMembers !== undefined) {
         setText('stat-members', totalMembers);

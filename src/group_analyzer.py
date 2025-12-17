@@ -384,7 +384,7 @@ class GroupAnalyzer:
                 except Exception:
                     return 0
 
-            # ElementType 全量汇总（注意：element_counts 可能是 str-key，也可能是 int-key）
+            # ElementType 全量汇总
             wallet_count = _n(ElementType.WALLET)
             if wallet_count and qq and (not is_system):
                 wallet_by_user[qq] += wallet_count
@@ -585,7 +585,7 @@ class GroupAnalyzer:
         self.stats.top_media_sender = build_top_item(media_by_user)
         self.stats.element_totals = dict(sorted(element_totals.items()))
 
-        # ElementType 全量字段（与 personal_analyzer 对齐）
+        # ElementType 全量字段
         et = lambda x: int(x)
         self.stats.element_text_count = int(element_totals.get(et(ElementType.TEXT), 0) or 0)
         self.stats.element_pic_count = int(element_totals.get(et(ElementType.PIC), 0) or 0)
@@ -761,7 +761,7 @@ class GroupAnalyzer:
                     else:
                         nicknames.append(names_list)
                 
-                word_counts, words_top = cut_words(all_text_lines, top_words_num=20, nicknames=nicknames)
+                word_counts, words_top = cut_words(all_text_lines, top_words_num=50, nicknames=nicknames)
                 self.stats.hot_words = words_top
             except Exception as e:
                 print(f"分词失败: {e}")

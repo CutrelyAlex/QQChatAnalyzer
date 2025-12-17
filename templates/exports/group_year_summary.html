@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>群聊年度总结</title>
+  <style>
+    :root{
+      --bg:#0b1020;
+      --fg:#eaf0ff;
+      --muted:rgba(234,240,255,.75);
+      --card:rgba(255,255,255,.06);
+      --card2:rgba(255,255,255,.08);
+      --line:rgba(255,255,255,.12);
+      --accent:#6ee7ff;
+      --accent2:#a78bfa;
+      --warn:#ffcc66;
+    }
+    *{box-sizing:border-box;}
+    body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;background:radial-gradient(1200px 600px at 20% 0%, rgba(110,231,255,.18), transparent 60%),radial-gradient(900px 500px at 80% 20%, rgba(167,139,250,.18), transparent 60%),var(--bg);color:var(--fg);}
+    a{color:inherit;}
+
+    .page{width:min(980px, 94vw);margin:28px auto;padding:26px 26px 22px;border:1px solid var(--line);background:linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.04));border-radius:18px;box-shadow:0 20px 60px rgba(0,0,0,.35);position:relative;overflow:hidden;}
+    .page:before{content:"";position:absolute;inset:-2px;background:linear-gradient(90deg, rgba(110,231,255,.18), rgba(167,139,250,.18), rgba(110,231,255,.18));filter:blur(16px);opacity:.65;z-index:0;}
+    .page > *{position:relative;z-index:1;}
+
+    .header{display:flex;gap:14px;align-items:flex-end;justify-content:space-between;margin-bottom:16px;}
+    .title{font-size:26px;font-weight:800;letter-spacing:.5px;}
+    .meta{font-size:12px;color:var(--muted);text-align:right;line-height:1.6;}
+    .badge{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:rgba(0,0,0,.18);font-size:12px;color:var(--muted);}
+
+    .grid{display:grid;grid-template-columns:repeat(12, 1fr);gap:12px;}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;}
+    .card h3{margin:0 0 8px 0;font-size:14px;letter-spacing:.3px;color:rgba(234,240,255,.92)}
+    .kpi{font-size:22px;font-weight:800;}
+    .kpi-sub{font-size:12px;color:var(--muted);margin-top:4px;}
+
+    .chip{display:inline-flex;align-items:center;gap:8px;padding:8px 10px;border-radius:999px;background:rgba(110,231,255,.10);border:1px solid rgba(110,231,255,.25);}
+    .chip .w{font-weight:800;}
+    .chip .c{font-size:12px;color:var(--muted);}
+
+    .word-block{border:1px solid var(--line);border-radius:14px;background:var(--card2);padding:14px;}
+    .word-head{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:10px;}
+    .word-title{display:flex;flex-wrap:wrap;gap:10px;align-items:baseline;}
+    .word-title .word{font-size:20px;font-weight:900;}
+    .word-title .count{font-size:12px;color:var(--muted)}
+
+    .examples{margin:0;padding-left:18px;color:rgba(234,240,255,.9)}
+    .examples li{margin:6px 0;line-height:1.55;}
+    .examples .who{color:var(--muted);font-size:12px;}
+    .examples .txt{color:rgba(234,240,255,.95);}
+
+    .rank{display:flex;flex-direction:column;gap:8px;}
+    .rank-row{display:grid;grid-template-columns:42px 1fr auto;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:rgba(0,0,0,.12)}
+    .rank-row .no{font-weight:900;color:rgba(110,231,255,.9)}
+    .rank-row .name{font-weight:700;}
+    .rank-row .count{color:var(--muted);font-variant-numeric:tabular-nums;}
+
+    .hint{color:var(--muted);font-size:12px;line-height:1.6;}
+
+    @media print{
+      body{background:#fff;color:#000;}
+      .page{box-shadow:none;background:#fff;border-color:#ddd;}
+      .page:before{display:none;}
+      .card,.word-block{background:#fff;border-color:#ddd;}
+      .meta,.hint,.kpi-sub,.chip .c,.word-title .count,.examples .who,.rank-row .count{color:#333;}
+      .page{break-after:page;}
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 封面 / 概览 -->
+  <section class="page">
+    <div class="header">
+      <div>
+        <div class="title">群聊年度总结</div>
+        <div class="badge">📁 {{ filename }}</div>
+      </div>
+      <div class="meta">
+        <div>生成时间：{{ generated_at }}</div>
+        <div class="hint">提示：例句基于“热词包含”匹配；如需更严谨的语义匹配可后续升级。</div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card" style="grid-column: span 4;">
+        <h3>消息总数</h3>
+        <div class="kpi">{{ group_stats.total_messages or '-' }}</div>
+        <div class="kpi-sub">分析口径：导入后的有效消息</div>
+      </div>
+
+      <div class="card" style="grid-column: span 4;">
+        <h3>日均消息</h3>
+        <div class="kpi">{{ group_stats.daily_average or '-' }}</div>
+        <div class="kpi-sub">全年平均（按记录覆盖天数估算）</div>
+      </div>
+
+      <div class="card" style="grid-column: span 4;">
+        <h3>最活跃时段</h3>
+        <div class="kpi">{% if group_stats.peak_hour is not none %}{{ group_stats.peak_hour }}:00{% else %}-{% endif %}</div>
+        <div class="kpi-sub">峰值小时（按小时聚合）</div>
+      </div>
+
+      <div class="card" style="grid-column: span 6;">
+        <h3>结构化消息</h3>
+        <div class="hint">
+          系统：{{ group_stats.system_messages or 0 }} ｜ 撤回：{{ group_stats.recalled_messages or 0 }} ｜ 含@：{{ group_stats.mention_messages or 0 }} ｜ 回复：{{ group_stats.reply_messages or 0 }} ｜ 媒体/附件：{{ group_stats.media_messages or 0 }}
+        </div>
+      </div>
+
+      <div class="card" style="grid-column: span 6;">
+        <h3>成员规模</h3>
+        <div class="hint">总成员：{{ group_stats.total_members or '-' }} ｜ Top5 发言榜见后页</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 热词页：4 页，每页 2 个热词 -->
+  {% for p in hotword_pages %}
+  <section class="page">
+    <div class="header">
+      <div>
+        <div class="title">年度热词 · 第 {{ p.index }} / {{ hotword_pages|length }} 页</div>
+        <div class="hint">每页 2 个热词，每个热词展示 ≥5 条（若文本中不足则显示实际可匹配条数）</div>
+      </div>
+      <div class="meta">来源：群体分析热词 + 原文例句</div>
+    </div>
+
+    <div class="grid">
+      {% for w in p.words %}
+      <div class="word-block" style="grid-column: span 12;">
+        <div class="word-head">
+          <div class="word-title">
+            <span class="word">{{ w.word }}</span>
+            <span class="count">出现 {{ w.count }} 次（热词榜口径）</span>
+          </div>
+          <div class="chip"><span class="w">例句</span><span class="c">{{ (w.examples|length) }} 条</span></div>
+        </div>
+
+        {% if w.examples and w.examples|length > 0 %}
+        <ol class="examples">
+          {% for ex in w.examples %}
+          <li>
+            <div class="txt">{{ ex.content }}</div>
+            <div class="who">{{ ex.timestamp }} · {{ ex.sender }}{% if ex.qq %} ({{ ex.qq }}){% endif %}</div>
+          </li>
+          {% endfor %}
+        </ol>
+        {% else %}
+          <div class="hint">未找到包含该热词的文本消息（可能该热词主要来自切词/归一化差异）。</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+
+  <!-- 榜单页 -->
+  <section class="page">
+    <div class="header">
+      <div>
+        <div class="title">群聊关键榜单</div>
+        <div class="hint">一眼看懂“谁最能聊、谁最会@、谁最夜猫子/早起鸟（近似）”</div>
+      </div>
+      <div class="meta">数据源：群体分析缓存（group）</div>
+    </div>
+
+    <div class="grid">
+      <div class="card" style="grid-column: span 12;">
+        <h3>Top 5 发言</h3>
+        {% if top_speakers and top_speakers|length > 0 %}
+        <div class="rank">
+          {% for u in top_speakers %}
+          <div class="rank-row">
+            <div class="no">#{{ loop.index }}</div>
+            <div class="name">{{ u.name }}{% if u.qq %} ({{ u.qq }}){% endif %}</div>
+            <div class="count">{{ u.count }} 条</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+          <div class="hint">暂无成员发言统计数据</div>
+        {% endif %}
+      </div>
+
+      <div class="card" style="grid-column: span 6;">
+        <h3>熬夜最多（近似）</h3>
+        {% if top_night_owl %}
+          <div class="kpi">{{ top_night_owl.name or top_night_owl.qq or '-' }}</div>
+          <div class="kpi-sub">在 {{ top_night_owl.hour }} 点的“小时冠军”里计数最高（{{ top_night_owl.count }} 条）</div>
+        {% else %}
+          <div class="hint">缺少凌晨时段统计</div>
+        {% endif %}
+      </div>
+
+      <div class="card" style="grid-column: span 6;">
+        <h3>早起最多（近似）</h3>
+        {% if top_early_bird %}
+          <div class="kpi">{{ top_early_bird.name or top_early_bird.qq or '-' }}</div>
+          <div class="kpi-sub">在 {{ top_early_bird.hour }} 点的“小时冠军”里计数最高（{{ top_early_bird.count }} 条）</div>
+        {% else %}
+          <div class="hint">缺少清晨时段统计</div>
+        {% endif %}
+      </div>
+
+      <div class="card" style="grid-column: span 12;">
+        <h3>@ 他人最多</h3>
+        {% if top_mention_sender %}
+          <div class="hint">{{ top_mention_sender.name or top_mention_sender.qq or '-' }}{% if top_mention_sender.qq %} ({{ top_mention_sender.qq }}){% endif %} · {{ top_mention_sender.count or 0 }} 条含@消息</div>
+        {% else %}
+          <div class="hint">暂无 @ 统计数据</div>
+        {% endif %}
+      </div>
+
+      <div class="card" style="grid-column: span 12;">
+        <h3>备注</h3>
+        <div class="hint">
+          - “熬夜/早起最多”当前采用 <b>每小时最活跃用户</b> 的统计做近似；若需要严格口径（按用户在时段内的总发言数），建议在群体分析缓存里增加“用户×小时”的分布矩阵。
+          <br>
+          - 若你希望导出 PNG，可在此 HTML 基础上接入浏览器截图（例如 Playwright）实现一键渲染。
+        </div>
+      </div>
+    </div>
+  </section>
+
+</body>
+</html>

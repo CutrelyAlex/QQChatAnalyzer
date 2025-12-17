@@ -59,6 +59,11 @@ def internal_error(error):
 
 # ============ 首页路由 ============
 
+
+@app.route('/favicon.ico')
+def favicon():
+    return ('', 204)
+
 @app.route('/')
 def index():
     """主页"""
