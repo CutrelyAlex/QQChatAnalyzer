@@ -135,6 +135,10 @@ function renderNetworkGraph(nodes, edges) {
         const pos = nodePositions[node.id] || { x: centerX, y: centerY };
         const degree = nodeDegrees[node.id] || 0;
         const isCore = coreNodes.has(node.id);
+
+        // 节点视觉尺寸：避免度数极高时 dot 过大导致布局被撑开/观感“巨大”
+        const coreSize = Math.min(45, Math.max(25, 15 + degree * 2));
+        const normalSize = Math.min(35, Math.max(15, 10 + degree));
         
         return {
             id: node.id,
@@ -158,7 +162,7 @@ function renderNetworkGraph(nodes, edges) {
                 bold: isCore ? { mod: 'bold' } : {}
             },
             borderWidth: isCore ? 3 : 2,
-            size: isCore ? Math.max(25, 15 + degree * 2) : Math.max(15, 10 + degree)
+            size: isCore ? coreSize : normalSize
         };
     });
     
@@ -316,23 +320,6 @@ function renderNetworkGraph(nodes, edges) {
         } catch (_) {
             return;
         }
-
-        // 让 fit 完成一帧后再做缩放夹取
-        setTimeout(() => {
-            try {
-                const s = (typeof network.getScale === 'function') ? network.getScale() : null;
-                if (typeof s === 'number' && isFinite(s) && s > 0 && s < 0.18) {
-                    const pos = (typeof network.getViewPosition === 'function') ? network.getViewPosition() : { x: 0, y: 0 };
-                    network.moveTo({
-                        position: pos || { x: 0, y: 0 },
-                        scale: 0.18,
-                        animation: { duration: 220, easingFunction: 'easeInOutQuad' }
-                    });
-                }
-            } catch (_) {
-                // ignore
-            }
-        }, 60);
     };
     
     // 初始适配视图
@@ -761,11 +748,6 @@ function initNetworkLayoutButtons() {
         return data;
     };
 
-    const formatTs = () => {
-        const d = new Date();
-        const pad = (n) => n.toString().padStart(2, '0');
-        return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-    };
 
     const updateFullscreenButtonText = () => {
         if (!btnFullscreen) return;
@@ -802,21 +784,6 @@ function initNetworkLayoutButtons() {
         } catch (_) {
             return;
         }
-        setTimeout(() => {
-            try {
-                const s = (typeof network.getScale === 'function') ? network.getScale() : null;
-                if (typeof s === 'number' && isFinite(s) && s > 0 && s < 0.18) {
-                    const pos = (typeof network.getViewPosition === 'function') ? network.getViewPosition() : { x: 0, y: 0 };
-                    network.moveTo({
-                        position: pos || { x: 0, y: 0 },
-                        scale: 0.18,
-                        animation: { duration: 220, easingFunction: 'easeInOutQuad' }
-                    });
-                }
-            } catch (_) {
-                // ignore
-            }
-        }, 60);
     };
 
     const setExportBusy = (busy, msg) => {
@@ -876,6 +843,20 @@ function initNetworkLayoutButtons() {
             const w = Math.max(1, Math.round(r.width || 900));
             const h = Math.max(1, Math.round(r.height || 600));
             return { w, h };
+        };
+
+        // 返回 canvas 的真实像素尺寸（高 DPI 下，canvas.width/height 通常 > DOM 尺寸）
+        const getCanvasRealSize = () => {
+            try {
+                const c = getNetworkCanvas();
+                if (!c) return null;
+                const w = Number(c.width || 0) || 0;
+                const h = Number(c.height || 0) || 0;
+                if (w > 0 && h > 0) return { w, h };
+                return null;
+            } catch (_) {
+                return null;
+            }
         };
 
         const getNodeBBox = () => {
@@ -1237,48 +1218,97 @@ function initNetworkLayoutButtons() {
             }
         }
 
-        // 目标层容量：1-4-8-16-32-32-32...
-        const capForLevel = (lvl) => {
-            if (lvl <= 0) return 1;
-            if (lvl === 1) return 4;
-            if (lvl === 2) return 8;
-            if (lvl === 3) return 16;
-            return 32;
-        };
+        // 分层策略：
+        // - 先用 BFS 距离把节点按“离根的关系层”分组
+        // - 再在每个距离组内按度数（连接数）从高到低排序，按容量拆成多个子层
+        //   这样不会把所有节点都挤在同一条线上，同时热门节点更靠近顶部。
+        const maxDist = Object.values(dist).reduce((m, v) => Math.max(m, v), 0);
+        const fallbackDist = maxDist + 1; // 非连通分量节点统一放在最后一组
+
+        const groups = {};
+        for (const n of nodes) {
+            if (n.id === root) continue;
+            const d = dist[n.id] ?? fallbackDist;
+            if (!groups[d]) groups[d] = [];
+            groups[d].push(n.id);
+        }
+
+        // 每层容量：随规模变化，避免层数过多或过少。
+        // 容量越小，层越多，单层越短
+        const capPerLevel = Math.max(10, Math.min(16, Math.round(Math.sqrt(nodes.length || 1) * 1.6)));
 
         const assigned = {};
         assigned[root] = 0;
-        const used = { 0: 1 };
+        let levelCursor = 1;
 
-        const maxDist = Object.values(dist).reduce((m, v) => Math.max(m, v), 0);
-        const fallbackDist = maxDist + 1;
+        const dKeys = Object.keys(groups)
+            .map(v => parseInt(v, 10))
+            .filter(v => Number.isFinite(v))
+            .sort((a, b) => a - b);
 
-        const nodesSorted = nodes
-            .filter(n => n.id !== root)
-            .map(n => ({
-                id: n.id,
-                d: dist[n.id] ?? fallbackDist,
-                deg: deg[n.id] || 0
-            }))
-            .sort((a, b) => (a.d - b.d) || (b.deg - a.deg) || String(a.id).localeCompare(String(b.id)));
+        // 用于检查“同一层内互相连接”的边
+        const edgeList = Array.isArray(edges) ? edges : [];
 
-        const pickLevel = (minLevel) => {
-            let lvl = Math.max(1, minLevel);
-            while (true) {
-                const cap = capForLevel(lvl);
-                const cur = used[lvl] || 0;
-                if (cur < cap) return lvl;
-                lvl += 1;
+        for (const d of dKeys) {
+            const ids = (groups[d] || []).slice();
+            // 热门度：用度数排序（越热门越靠前、越靠上）
+            ids.sort((a, b) => (deg[b] || 0) - (deg[a] || 0) || String(a).localeCompare(String(b)));
+
+            // 分块：每块 capPerLevel 个，块内再做“模拟子层”拆分
+            for (let start = 0; start < ids.length; start += capPerLevel) {
+                const chunk = ids.slice(start, start + capPerLevel);
+                if (!chunk.length) continue;
+
+                // 构建 chunk 内的邻接（只看 chunk 内的边）
+                const set = new Set(chunk);
+                const adjChunk = {};
+                for (const id of chunk) adjChunk[id] = [];
+
+                let intraEdges = 0;
+                for (const e of edgeList) {
+                    const a = e?.from;
+                    const b = e?.to;
+                    if (!set.has(a) || !set.has(b) || a === b) continue;
+                    adjChunk[a].push(b);
+                    adjChunk[b].push(a);
+                    intraEdges += 1;
+                }
+
+                // 如果 chunk 内存在连边，则把一部分节点“稍微下移一层（模拟层）”
+                // 用简单的贪心二染色：热门节点优先留在上层，冲突的放到下层。
+                if (intraEdges > 0) {
+                    const color = {};
+                    for (const id of chunk) {
+                        let conflictTop = false;
+                        for (const nb of (adjChunk[id] || [])) {
+                            if (color[nb] === 0) {
+                                conflictTop = true;
+                                break;
+                            }
+                        }
+                        color[id] = conflictTop ? 1 : 0;
+                    }
+                    for (const id of chunk) {
+                        assigned[id] = levelCursor + (color[id] || 0);
+                    }
+                    levelCursor += 2;
+                } else {
+                    for (const id of chunk) {
+                        assigned[id] = levelCursor;
+                    }
+                    levelCursor += 1;
+                }
             }
-        };
-
-        for (const n of nodesSorted) {
-            const lvl = pickLevel(n.d);
-            assigned[n.id] = lvl;
-            used[lvl] = (used[lvl] || 0) + 1;
         }
 
-        data.nodes.update(nodes.map(n => ({ id: n.id, level: assigned[n.id] ?? fallbackDist, x: null, y: null })));
+        const updates = nodes.map(n => ({
+            id: n.id,
+            level: assigned[n.id] ?? levelCursor,
+            x: null,
+            y: null,
+            fixed: { x: false, y: false }
+        }));
+        data.nodes.update(updates);
         network.setOptions({
             physics: { enabled: false },
             layout: {
@@ -1287,14 +1317,19 @@ function initNetworkLayoutButtons() {
                     enabled: true,
                     direction: 'UD',
                     sortMethod: 'hubsize',
-                    levelSeparation: 120,
+                    blockShifting: true,
+                    edgeMinimization: true,
+                    parentCentralization: true,
+                    levelSeparation: 90,
                     nodeSpacing: 140,
                     treeSpacing: 220
                 }
             },
             edges: { smooth: { enabled: true, type: 'cubicBezier', roundness: 0.2 } }
         });
-        safeFitView(network, { animation: { duration: 600, easingFunction: 'easeInOutQuad' } });
+
+        network.fit({ animation: { duration: 600, easingFunction: 'easeInOutQuad' } });
+
         if (!silent) {
             showStatusMessage('success', '✅ 已切换：树状排布');
         }
@@ -1313,8 +1348,6 @@ function initNetworkLayoutButtons() {
         }
         smartLayoutBusy = true;
         if (btnSmart) btnSmart.disabled = true;
-
-        showStatusMessage('info', '⏳ 智能排布计算中（先重置位置，再模拟几次以避免树状→智能错位）...');
 
         let finished = false;
         const finish = () => {
@@ -1416,19 +1449,6 @@ function initNetworkLayoutButtons() {
         document.addEventListener('fullscreenchange', () => {
             updateFullscreenButtonText();
             try {
-                try {
-                    const el = document.fullscreenElement;
-                    const id = el?.id || '(no-id)';
-                    const r = el?.getBoundingClientRect?.();
-                    if (r) {
-                        console.log('[network fullscreen] element=', id, 'rect=', { w: r.width, h: r.height, top: r.top, left: r.left });
-                    } else {
-                        console.log('[network fullscreen] element=', id);
-                    }
-                } catch (_) {
-                    // ignore
-                }
-
                 // 全屏进/出后，容器尺寸变化，需要 redraw/fit
                 const network = window.currentNetwork;
                 if (network && typeof network.redraw === 'function') {

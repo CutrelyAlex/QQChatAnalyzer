@@ -408,7 +408,37 @@ def export_network_png_finish():
 
 		logger.info('Stitching network PNG: job=%s tiles=%sx%s out=%sx%s', job_id, nx, ny, out_w, out_h)
 
-		canvas = Image.new('RGBA', (out_w, out_h), (0, 0, 0, 0))
+		# 读取每个 tile 的实际宽高元数据（处理高 DPI 和浮点数舍入差异）
+		tile_sizes = {}  # (r, c) -> (actual_w, actual_h)
+		for r in range(ny):
+			for c in range(nx):
+				meta_path = tmp_dir / f"tile_r{r:04d}_c{c:04d}.json"
+				if meta_path.exists():
+					try:
+						m = json.loads(meta_path.read_text(encoding='utf-8'))
+						tile_sizes[(r, c)] = (int(m.get('width') or tw), int(m.get('height') or th))
+					except Exception:
+						tile_sizes[(r, c)] = (tw, th)
+				else:
+					tile_sizes[(r, c)] = (tw, th)
+
+		# 根据实际 tile 尺寸计算输出画布大小和拼接位置
+		col_widths = []
+		for c in range(nx):
+			cw = tile_sizes.get((0, c), (tw, th))[0]
+			col_widths.append(cw)
+		row_heights = []
+		for r in range(ny):
+			rh = tile_sizes.get((r, 0), (tw, th))[1]
+			row_heights.append(rh)
+
+		actual_out_w = sum(col_widths)
+		actual_out_h = sum(row_heights)
+
+		if actual_out_w <= 0 or actual_out_h <= 0:
+			return _json_error('计算的输出尺寸非法', 400)
+
+		canvas = Image.new('RGBA', (actual_out_w, actual_out_h), (0, 0, 0, 0))
 		missing = []
 		for r in range(ny):
 			for c in range(nx):
@@ -416,10 +446,15 @@ def export_network_png_finish():
 				if not p.exists():
 					missing.append((r, c))
 					continue
+				
+				# 按实际 tile 宽高计算拼接位置（无缝拼接）
+				paste_x = sum(col_widths[:c])
+				paste_y = sum(row_heights[:r])
+				
 				img = Image.open(p)
 				if img.mode != 'RGBA':
 					img = img.convert('RGBA')
-				canvas.paste(img, (c * tw, r * th))
+				canvas.paste(img, (paste_x, paste_y))
 				try:
 					img.close()
 				except Exception:
@@ -440,7 +475,9 @@ def export_network_png_finish():
 
 		# 清理临时目录（可选：保留调试时可注释）
 		try:
-			for f in tmp_dir.glob('tile_*.png'):
+			for f in tmp_dir.glob('tile_r*.png'):
+				f.unlink(missing_ok=True)
+			for f in tmp_dir.glob('tile_r*.json'):
 				f.unlink(missing_ok=True)
 			(tmp_dir / 'meta.json').unlink(missing_ok=True)
 			tmp_dir.rmdir()
@@ -451,8 +488,8 @@ def export_network_png_finish():
 		return jsonify({
 			'success': True,
 			'export_path': str(out_path).replace('\\', '/'),
-			'width': out_w,
-			'height': out_h,
+			'width': actual_out_w,
+			'height': actual_out_h,
 			'nx': nx,
 			'ny': ny,
 		})
