@@ -224,6 +224,27 @@ def export_report(format_type):
     return impl(format_type)
 
 
+@app.route('/api/export/network/png/start', methods=['POST'])
+def export_network_png_start():
+    """开始一次网络图 PNG 导出任务（服务端拼接）。"""
+    from src.web.routes.export import export_network_png_start as impl
+    return impl()
+
+
+@app.route('/api/export/network/png/tile', methods=['POST'])
+def export_network_png_tile():
+    """上传单个网络图 PNG 导出 tile（服务端拼接）。"""
+    from src.web.routes.export import export_network_png_tile as impl
+    return impl()
+
+
+@app.route('/api/export/network/png/finish', methods=['POST'])
+def export_network_png_finish():
+    """完成网络图 PNG 导出任务（服务端拼接）并写入 exports/。"""
+    from src.web.routes.export import export_network_png_finish as impl
+    return impl()
+
+
 # ============ 热词示例API ============
 
 @app.route('/api/chat-examples', methods=['GET'])

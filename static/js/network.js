@@ -309,6 +309,31 @@ function renderNetworkGraph(nodes, edges) {
     // 供布局按钮使用
     window.currentNetwork = network;
     window.currentNetworkData = data;
+
+    const safeFit = (fitOpts = {}) => {
+        try {
+            network.fit(fitOpts);
+        } catch (_) {
+            return;
+        }
+
+        // 让 fit 完成一帧后再做缩放夹取
+        setTimeout(() => {
+            try {
+                const s = (typeof network.getScale === 'function') ? network.getScale() : null;
+                if (typeof s === 'number' && isFinite(s) && s > 0 && s < 0.18) {
+                    const pos = (typeof network.getViewPosition === 'function') ? network.getViewPosition() : { x: 0, y: 0 };
+                    network.moveTo({
+                        position: pos || { x: 0, y: 0 },
+                        scale: 0.18,
+                        animation: { duration: 220, easingFunction: 'easeInOutQuad' }
+                    });
+                }
+            } catch (_) {
+                // ignore
+            }
+        }, 60);
+    };
     
     // 初始适配视图
     network.once('afterDrawing', () => {
@@ -321,7 +346,7 @@ function renderNetworkGraph(nodes, edges) {
             }
         }
 
-        network.fit({
+        safeFit({
             animation: {
                 duration: 500,
                 easingFunction: 'easeInOutQuad'
@@ -601,9 +626,14 @@ function renderNetworkGraph(nodes, edges) {
     network.on('doubleClick', async function() {
         selectedNode = null;
         await restoreAllNetworkStyles();
-        network.fit({
+        try {
+            if (typeof network.redraw === 'function') network.redraw();
+        } catch (_) {
+            // ignore
+        }
+        safeFit({
             animation: {
-                duration: 300,
+                duration: 320,
                 easingFunction: 'easeInOutQuad'
             }
         });
@@ -661,7 +691,7 @@ function initNetworkControls() {
         return;
     }
 
-    // 初始化：同步 slider 当前值到全局限制（否则默认仍是 100/300）
+    // 初始化：同步 slider 当前值到全局限制
     if (maxNodesValue) maxNodesValue.textContent = maxNodesSlider.value;
     if (maxEdgesValue) maxEdgesValue.textContent = maxEdgesSlider.value;
     currentNetworkLimits.maxNodes = parseInt(maxNodesSlider.value);
@@ -716,13 +746,19 @@ function initNetworkLayoutButtons() {
         return null;
     };
 
-    const downloadDataUrl = (dataUrl, filename) => {
-        const a = document.createElement('a');
-        a.href = dataUrl;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
+
+    const postJson = async (url, payload) => {
+        const resp = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload || {})
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || data?.success === false) {
+            const msg = data?.error || `${resp.status} ${resp.statusText}`;
+            throw new Error(msg);
+        }
+        return data;
     };
 
     const formatTs = () => {
@@ -740,7 +776,9 @@ function initNetworkLayoutButtons() {
     const toggleFullscreen = async () => {
         if (!requireNetwork()) return;
 
-        const target = document.getElementById('network-graph-container') || document.getElementById('network-graph');
+        // 优先全屏到 #network-graph（vis-network 的真实容器）。
+        // 某些布局/CSS 下，对 container 全屏会出现“只占上半部分”的现象。
+        const target = document.getElementById('network-graph') || document.getElementById('network-graph-container');
         if (!target) {
             showStatusMessage('error', '网络图容器未找到');
             return;
@@ -758,10 +796,48 @@ function initNetworkLayoutButtons() {
         }
     };
 
+    const safeFitView = (network, opts = {}) => {
+        try {
+            network.fit(opts);
+        } catch (_) {
+            return;
+        }
+        setTimeout(() => {
+            try {
+                const s = (typeof network.getScale === 'function') ? network.getScale() : null;
+                if (typeof s === 'number' && isFinite(s) && s > 0 && s < 0.18) {
+                    const pos = (typeof network.getViewPosition === 'function') ? network.getViewPosition() : { x: 0, y: 0 };
+                    network.moveTo({
+                        position: pos || { x: 0, y: 0 },
+                        scale: 0.18,
+                        animation: { duration: 220, easingFunction: 'easeInOutQuad' }
+                    });
+                }
+            } catch (_) {
+                // ignore
+            }
+        }, 60);
+    };
+
+    const setExportBusy = (busy, msg) => {
+        if (!btnExportPng) return;
+        btnExportPng.disabled = !!busy;
+        btnExportPng.classList.toggle('is-loading', !!busy);
+        btnExportPng.textContent = busy ? '⏳ 导出中...' : '🖼️ 导出PNG';
+        if (busy && msg) {
+            showStatusMessage('info', msg);
+        }
+    };
+
     const exportNetworkPng = async () => {
         if (!requireNetwork()) return;
 
         const network = window.currentNetwork;
+
+        if (!network) {
+            showStatusMessage('error', '网络图未初始化');
+            return;
+        }
 
         const canvas = getNetworkCanvas();
         if (!canvas) {
@@ -777,10 +853,6 @@ function initNetworkLayoutButtons() {
             // ignore
         }
 
-        // 用户请求的倍率非常大，这里做安全保护：
-        // 以“当前画布分辨率 * scale”会迅速爆内存，所以我们限制最大输出像素。
-        const MAX_OUTPUT_PIXELS = 80_000_000; // ~80MP (RGBA约 320MB 内存峰值)
-
         // 导出前：先 fit，确保“整个画面的节点”都在视野内
         let prev = null;
         try {
@@ -792,51 +864,174 @@ function initNetworkLayoutButtons() {
             prev = null;
         }
 
-        try {
-            showStatusMessage('info', '⏳ 正在 fit 并导出 PNG（会自动包含全部节点）...');
+
+        const waitFrame = async (ms = 30) => {
+            await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, ms)));
+        };
+
+        const getGraphDomSize = () => {
+            const el = document.getElementById('network-graph');
+            if (!el) return { w: 900, h: 600 };
+            const r = el.getBoundingClientRect();
+            const w = Math.max(1, Math.round(r.width || 900));
+            const h = Math.max(1, Math.round(r.height || 600));
+            return { w, h };
+        };
+
+        const getNodeBBox = () => {
+            try {
+                const data = window.currentNetworkData;
+                const ids = (data?.nodes?.getIds?.() || []).filter(Boolean);
+                const pos = network.getPositions(ids);
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                for (const id of ids) {
+                    const p = pos[id];
+                    if (!p) continue;
+                    const x = p.x, y = p.y;
+                    if (!isFinite(x) || !isFinite(y)) continue;
+                    if (x < minX) minX = x;
+                    if (y < minY) minY = y;
+                    if (x > maxX) maxX = x;
+                    if (y > maxY) maxY = y;
+                }
+                if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) {
+                    return null;
+                }
+                // 给一点边距，避免最边缘节点被切掉
+                const pad = 80;
+                return { minX: minX - pad, minY: minY - pad, maxX: maxX + pad, maxY: maxY + pad };
+            } catch (_) {
+                return null;
+            }
+        };
+
+        const exportByTiling = async (tileScale) => {
+            // 思路：
+            // 1) 先 fit 得到基准视图（包含所有节点）
+            // 2) 再把 scale 放大 tileScale 倍（相当于“放大镜”）
+            // 3) 计算当前视窗在世界坐标覆盖范围，按 bbox 分块移动视角截图
+
+            setExportBusy(true, '⏳ 正在准备分块导出并上传到服务端（会自动包含全部节点）...');
 
             try {
-                network.fit({
-                    animation: false,
-                    padding: 80,
-                    maxZoom: 1.2
+                safeFitView(network, { animation: false, padding: 90, maxZoom: 1.2 });
+                await waitFrame(20);
+
+                const baseScale = (typeof network.getScale === 'function') ? network.getScale() : 1;
+                const targetScale = Math.max(0.001, baseScale * tileScale);
+
+                // 放大后先居中到 bbox 中心
+                const bbox = getNodeBBox();
+                if (!bbox) {
+                    showStatusMessage('error', '导出失败：无法计算节点边界');
+                    return;
+                }
+
+                const center0 = { x: (bbox.minX + bbox.maxX) / 2, y: (bbox.minY + bbox.maxY) / 2 };
+                network.moveTo({ position: center0, scale: targetScale, animation: false });
+                await waitFrame(20);
+
+                const { w: domW, h: domH } = getGraphDomSize();
+                const tl = network.DOMtoCanvas({ x: 0, y: 0 });
+                const br = network.DOMtoCanvas({ x: domW, y: domH });
+                const viewW = Math.max(1e-6, br.x - tl.x);
+                const viewH = Math.max(1e-6, br.y - tl.y);
+
+                const spanX = Math.max(1e-6, bbox.maxX - bbox.minX);
+                const spanY = Math.max(1e-6, bbox.maxY - bbox.minY);
+
+                const nx = Math.max(1, Math.ceil(spanX / viewW));
+                const ny = Math.max(1, Math.ceil(spanY / viewH));
+                const total = nx * ny;
+
+                // 获取 canvas 实际输出尺寸（高 DPI 时可能与 DOM 大小不同）
+                const canvasSize = getCanvasRealSize();
+                const tileW = canvasSize?.w || domW;
+                const tileH = canvasSize?.h || domH;
+
+                // 先创建服务端导出任务（使用 canvas 实际尺寸而非 DOM 大小）
+                const jobStart = await postJson('/api/export/network/png/start', {
+                    file: window.appState?.currentFile || window.appState?.selectedFile || '',
+                    scale: Math.round(tileScale),
+                    nx,
+                    ny,
+                    tile_width: tileW,
+                    tile_height: tileH
                 });
-            } catch (_) {
-                // ignore
+                const jobId = jobStart?.job_id;
+                if (!jobId) {
+                    throw new Error('服务端未返回 job_id');
+                }
+
+                let idx = 0;
+                for (let yi = 0; yi < ny; yi++) {
+                    for (let xi = 0; xi < nx; xi++) {
+                        idx += 1;
+                        showStatusMessage('info', `⏳ 分块导出中：${idx}/${total}（${tileScale}x）...`);
+
+                        const cx = bbox.minX + viewW * (xi + 0.5);
+                        const cy = bbox.minY + viewH * (yi + 0.5);
+                        network.moveTo({ position: { x: cx, y: cy }, scale: targetScale, animation: false });
+                        await waitFrame(12);
+
+                        const c = getNetworkCanvas();
+                        if (!c) continue;
+
+                        // 上传 tile 给服务端（multipart/form-data）同时传递 canvas 实际宽高用于精确拼接
+                        const blob = await new Promise((resolve) => {
+                            try {
+                                c.toBlob((b) => resolve(b), 'image/png');
+                            } catch (_) {
+                                resolve(null);
+                            }
+                        });
+                        if (!blob) {
+                            throw new Error('无法从 canvas 导出 PNG（toBlob 失败）');
+                        }
+
+                        const fd = new FormData();
+                        fd.append('job_id', jobId);
+                        fd.append('row', String(yi));
+                        fd.append('col', String(xi));
+                        fd.append('tile_width', String(c.width));
+                        fd.append('tile_height', String(c.height));
+                        fd.append('tile', blob, `tile_${yi}_${xi}.png`);
+
+                        const up = await fetch('/api/export/network/png/tile', {
+                            method: 'POST',
+                            body: fd
+                        });
+                        const upJson = await up.json().catch(() => ({}));
+                        if (!up.ok || upJson?.success === false) {
+                            const msg = upJson?.error || `${up.status} ${up.statusText}`;
+                            throw new Error(`上传分块失败（${yi + 1},${xi + 1}）：${msg}`);
+                        }
+
+                        await new Promise(r => setTimeout(r, 20));
+                    }
+                }
+
+                const done = await postJson('/api/export/network/png/finish', {
+                    job_id: jobId,
+                    scale: Math.round(tileScale),
+                    nx,
+                    ny,
+                    tile_width: tileW,
+                    tile_height: tileH
+                });
+                const path = done?.export_path || '';
+                const outW = done?.width;
+                const outH = done?.height;
+                const dimText = (outW && outH) ? `（${outW}×${outH}）` : '';
+                showStatusMessage('success', `✅ 已导出网络图 PNG（${tileScale}x）${dimText}，已保存到：${path || 'exports/'}。`);
+            } finally {
+                setExportBusy(false);
             }
+        };
 
-            // 等待一帧，确保 redraw 完成
-            await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 30)));
-
-            // 再取一次画布（fit 后可能变更）
-            const c = getNetworkCanvas() || canvas;
-
-            const outW = Math.max(1, Math.floor(c.width * scale));
-            const outH = Math.max(1, Math.floor(c.height * scale));
-            const outPixels = outW * outH;
-
-            if (outPixels > MAX_OUTPUT_PIXELS) {
-                const approxMp = (outPixels / 1_000_000).toFixed(1);
-                const maxMp = (MAX_OUTPUT_PIXELS / 1_000_000).toFixed(0);
-                showStatusMessage('error', `导出倍率过大：约 ${approxMp}MP，超过安全上限 ${maxMp}MP。建议先全屏再导出，或降低倍率。`);
-                return;
-            }
-
-            const out = document.createElement('canvas');
-            out.width = outW;
-            out.height = outH;
-            const ctx = out.getContext('2d');
-            if (!ctx) {
-                showStatusMessage('error', '导出失败：无法获取画布上下文');
-                return;
-            }
-            ctx.imageSmoothingEnabled = true;
-            ctx.imageSmoothingQuality = 'high';
-            ctx.drawImage(c, 0, 0, out.width, out.height);
-
-            const dataUrl = out.toDataURL('image/png');
-            downloadDataUrl(dataUrl, `network_graph_${formatTs()}_${scale}x.png`);
-            showStatusMessage('success', `✅ 已导出 PNG（${scale}x，已包含全部节点）`);
+        try {
+            // “分块截图 + 下载多个 PNG”。
+            await exportByTiling(scale);
         } catch (e) {
             console.error('exportNetworkPng failed:', e);
             showStatusMessage('error', '导出失败：' + (e?.message || e));
@@ -853,6 +1048,9 @@ function initNetworkLayoutButtons() {
             } catch (_) {
                 // ignore
             }
+
+            // 防止按钮保持 loading
+            setExportBusy(false);
         }
     };
 
@@ -994,7 +1192,7 @@ function initNetworkLayoutButtons() {
             layout: { improvedLayout: false, hierarchical: { enabled: false } },
             edges: { smooth: { enabled: true, type: 'continuous', roundness: 0.2 } }
         });
-        network.fit({ animation: { duration: 500, easingFunction: 'easeInOutQuad' } });
+        safeFitView(network, { animation: { duration: 500, easingFunction: 'easeInOutQuad' } });
         showStatusMessage('success', '✅ 已切换：圆形排布');
     };
 
@@ -1096,7 +1294,7 @@ function initNetworkLayoutButtons() {
             },
             edges: { smooth: { enabled: true, type: 'cubicBezier', roundness: 0.2 } }
         });
-        network.fit({ animation: { duration: 600, easingFunction: 'easeInOutQuad' } });
+        safeFitView(network, { animation: { duration: 600, easingFunction: 'easeInOutQuad' } });
         if (!silent) {
             showStatusMessage('success', '✅ 已切换：树状排布');
         }
@@ -1132,7 +1330,7 @@ function initNetworkLayoutButtons() {
             }
 
             network.setOptions({ physics: { enabled: false } });
-            network.fit({ animation: { duration: 600, easingFunction: 'easeInOutQuad' } });
+            safeFitView(network, { animation: { duration: 600, easingFunction: 'easeInOutQuad' } });
             showStatusMessage('success', '✅ 智能排布完成');
         };
 
@@ -1168,7 +1366,7 @@ function initNetworkLayoutButtons() {
                     damping: 0.35,
                     avoidOverlap: 0.2
                 },
-                stabilization: { enabled: true, iterations: 160, updateInterval: 25 }
+                stabilization: { enabled: true, iterations: 1024, updateInterval: 25 }
             },
             edges: { smooth: { enabled: true, type: 'straightCross', roundness: 0.15 } }
         });
@@ -1188,10 +1386,9 @@ function initNetworkLayoutButtons() {
             // ignore
         }
 
-        // 让 UI 先刷新，再触发 stabilize，降低“看起来卡住”的概率
+        // 让 UI 先刷新，再触发 stabilize
         setTimeout(() => {
             try {
-                // 分几次短 stabilize，比一次长 stabilize 更不容易让用户觉得“没反应”
                 network.stabilize(60);
                 setTimeout(() => {
                     try { network.stabilize(60); } catch (_) { /* ignore */ }
@@ -1204,7 +1401,6 @@ function initNetworkLayoutButtons() {
             }
         }, 0);
 
-        // 安全超时：避免永远不触发事件导致“卡住”
         setTimeout(finish, 2200);
     };
 
@@ -1220,13 +1416,42 @@ function initNetworkLayoutButtons() {
         document.addEventListener('fullscreenchange', () => {
             updateFullscreenButtonText();
             try {
+                try {
+                    const el = document.fullscreenElement;
+                    const id = el?.id || '(no-id)';
+                    const r = el?.getBoundingClientRect?.();
+                    if (r) {
+                        console.log('[network fullscreen] element=', id, 'rect=', { w: r.width, h: r.height, top: r.top, left: r.left });
+                    } else {
+                        console.log('[network fullscreen] element=', id);
+                    }
+                } catch (_) {
+                    // ignore
+                }
+
                 // 全屏进/出后，容器尺寸变化，需要 redraw/fit
                 const network = window.currentNetwork;
                 if (network && typeof network.redraw === 'function') {
                     setTimeout(() => {
+                        try {
+                            if (typeof network.setSize === 'function') {
+                                // 强制让 vis-network 重新计算 canvas 尺寸
+                                network.setSize('100%', '100%');
+                            }
+                        } catch (_) { /* ignore */ }
                         try { network.redraw(); } catch (_) { /* ignore */ }
-                        try { network.fit({ animation: { duration: 220, easingFunction: 'easeInOutQuad' } }); } catch (_) { /* ignore */ }
+                        try { safeFitView(network, { animation: { duration: 220, easingFunction: 'easeInOutQuad' } }); } catch (_) { /* ignore */ }
                     }, 50);
+
+                    // 某些浏览器/显卡组合会在 50ms 后仍未完成布局更新，再兜底一次
+                    setTimeout(() => {
+                        try {
+                            if (typeof network.setSize === 'function') {
+                                network.setSize('100%', '100%');
+                            }
+                        } catch (_) { /* ignore */ }
+                        try { network.redraw(); } catch (_) { /* ignore */ }
+                    }, 250);
                 }
             } catch (_) {
                 // ignore

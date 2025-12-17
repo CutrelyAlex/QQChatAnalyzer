@@ -10,10 +10,13 @@ from __future__ import annotations
 
 import logging
 import pickle
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote
+
+from uuid import uuid4
 
 from flask import jsonify, make_response, render_template, request
 
@@ -256,4 +259,205 @@ def export_report(format_type: str):
 	except Exception as e:
 		logger.exception('Error exporting report')
 		return _json_error(f'导出失败：{e}', 500)
+
+
+# ==================================================
+# Network PNG export (server-side stitching)
+# ==================================================
+
+
+def export_network_png_start():
+	"""Start a stitched network PNG export job.
+
+	POST /api/export/network/png/start
+	JSON: { file?: str, scale?: int, nx: int, ny: int, tile_width: int, tile_height: int }
+	Returns: { success: true, job_id: str }
+	"""
+	try:
+		payload = request.get_json(silent=True) or {}
+		nx = int(payload.get('nx') or 0)
+		ny = int(payload.get('ny') or 0)
+		tw = int(payload.get('tile_width') or 0)
+		th = int(payload.get('tile_height') or 0)
+		scale = int(payload.get('scale') or 1)
+
+		if nx <= 0 or ny <= 0 or tw <= 0 or th <= 0:
+			return _json_error('缺少或非法的 nx/ny/tile_width/tile_height', 400)
+		if scale <= 0:
+			scale = 1
+
+		job_id = uuid4().hex
+		tmp_dir = Path('exports') / '.tmp_network_export' / job_id
+		tmp_dir.mkdir(parents=True, exist_ok=True)
+
+		meta = {
+			'created_at': datetime.now().isoformat(),
+			'file': (payload.get('file') or ''),
+			'scale': scale,
+			'nx': nx,
+			'ny': ny,
+			'tile_width': tw,
+			'tile_height': th,
+		}
+		(tmp_dir / 'meta.json').write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding='utf-8')
+
+		return jsonify({'success': True, 'job_id': job_id})
+	except Exception as e:
+		logger.exception('export_network_png_start failed')
+		return _json_error(f'启动导出失败：{e}', 500)
+
+
+def export_network_png_tile():
+	"""Upload one tile image for a network PNG export job.
+
+	POST /api/export/network/png/tile
+	multipart/form-data:
+	- job_id: str
+	- row: int
+	- col: int
+	- tile_width: int (canvas actual width)
+	- tile_height: int (canvas actual height)
+	- tile: file (png)
+	"""
+	try:
+		job_id = (request.form.get('job_id') or '').strip()
+		if not job_id:
+			return _json_error('缺少 job_id', 400)
+
+		row = int(request.form.get('row') or -1)
+		col = int(request.form.get('col') or -1)
+		if row < 0 or col < 0:
+			return _json_error('缺少或非法的 row/col', 400)
+
+		f = request.files.get('tile')
+		if not f:
+			return _json_error('缺少 tile 文件', 400)
+
+		tmp_dir = Path('exports') / '.tmp_network_export' / job_id
+		if not tmp_dir.exists():
+			return _json_error('job_id 不存在或已过期', 404)
+
+		# 保存 tile 图片
+		out_path = tmp_dir / f"tile_r{row:04d}_c{col:04d}.png"
+		f.save(out_path)
+
+		# 保存该 tile 的实际宽高元数据（用于精确拼接，处理高 DPI 等情况）
+		try:
+			tw = int(request.form.get('tile_width') or 0)
+			th = int(request.form.get('tile_height') or 0)
+			if tw > 0 and th > 0:
+				meta_path = tmp_dir / f"tile_r{row:04d}_c{col:04d}.json"
+				meta_path.write_text(
+					json.dumps({'width': tw, 'height': th}, ensure_ascii=False),
+					encoding='utf-8'
+				)
+		except Exception as e:
+			logger.warning('Failed to save tile metadata: %s', e)
+
+		return jsonify({'success': True})
+	except Exception as e:
+		logger.exception('export_network_png_tile failed')
+		return _json_error(f'上传分块失败：{e}', 500)
+
+
+def export_network_png_finish():
+	"""Finish stitching all tiles into a single big PNG.
+
+	POST /api/export/network/png/finish
+	JSON: { job_id: str, nx: int, ny: int, tile_width: int, tile_height: int, scale?: int }
+	Returns: { success: true, export_path: str }
+	"""
+	try:
+		payload = request.get_json(silent=True) or {}
+		job_id = (payload.get('job_id') or '').strip()
+		if not job_id:
+			return _json_error('缺少 job_id', 400)
+
+		nx = int(payload.get('nx') or 0)
+		ny = int(payload.get('ny') or 0)
+		tw = int(payload.get('tile_width') or 0)
+		th = int(payload.get('tile_height') or 0)
+		scale = int(payload.get('scale') or 1)
+		if nx <= 0 or ny <= 0 or tw <= 0 or th <= 0:
+			return _json_error('缺少或非法的 nx/ny/tile_width/tile_height', 400)
+		if scale <= 0:
+			scale = 1
+
+		tmp_dir = Path('exports') / '.tmp_network_export' / job_id
+		if not tmp_dir.exists():
+			return _json_error('job_id 不存在或已过期', 404)
+
+		try:
+			from PIL import Image
+			from PIL import ImageFile
+			ImageFile.LOAD_TRUNCATED_IMAGES = True
+			# 允许大图（拼接输出可能非常大）
+			try:
+				Image.MAX_IMAGE_PIXELS = None
+			except Exception:
+				pass
+		except Exception as e:
+			return _json_error(f'缺少 Pillow 依赖（PIL）：{e}', 500)
+
+		out_w = int(tw * nx)
+		out_h = int(th * ny)
+
+		# 极端情况下 PNG 可能无法创建（内存/尺寸限制）。这里不做过小的“安全上限”，但仍做基本保护。
+		if out_w <= 0 or out_h <= 0:
+			return _json_error('输出尺寸非法', 400)
+
+		logger.info('Stitching network PNG: job=%s tiles=%sx%s out=%sx%s', job_id, nx, ny, out_w, out_h)
+
+		canvas = Image.new('RGBA', (out_w, out_h), (0, 0, 0, 0))
+		missing = []
+		for r in range(ny):
+			for c in range(nx):
+				p = tmp_dir / f"tile_r{r:04d}_c{c:04d}.png"
+				if not p.exists():
+					missing.append((r, c))
+					continue
+				img = Image.open(p)
+				if img.mode != 'RGBA':
+					img = img.convert('RGBA')
+				canvas.paste(img, (c * tw, r * th))
+				try:
+					img.close()
+				except Exception:
+					pass
+
+		if missing:
+			return _json_error(f'缺少分块：{missing[:10]} (共 {len(missing)} 个)', 400)
+
+		export_dir = Path('exports')
+		export_dir.mkdir(parents=True, exist_ok=True)
+		ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+		out_path = export_dir / f"network_graph_{ts}_{scale}x.png"
+		canvas.save(out_path, format='PNG', optimize=False)
+		try:
+			canvas.close()
+		except Exception:
+			pass
+
+		# 清理临时目录（可选：保留调试时可注释）
+		try:
+			for f in tmp_dir.glob('tile_*.png'):
+				f.unlink(missing_ok=True)
+			(tmp_dir / 'meta.json').unlink(missing_ok=True)
+			tmp_dir.rmdir()
+		except Exception:
+			# ignore cleanup failures
+			pass
+
+		return jsonify({
+			'success': True,
+			'export_path': str(out_path).replace('\\', '/'),
+			'width': out_w,
+			'height': out_h,
+			'nx': nx,
+			'ny': ny,
+		})
+
+	except Exception as e:
+		logger.exception('export_network_png_finish failed')
+		return _json_error(f'拼接导出失败：{e}', 500)
 

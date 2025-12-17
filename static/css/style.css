@@ -395,19 +395,30 @@ html::before {
    ========================= */
 
 /* Fullscreen is applied to the element itself; inline styles on #network-graph need !important overrides. */
-#network-graph-container:fullscreen {
+#network-graph-container:fullscreen,
+#network-graph-container:-webkit-full-screen,
+#network-graph-container:-moz-full-screen,
+#network-graph-container:-ms-fullscreen {
     background: #0f172a;
     padding: 0;
 }
 
 /* When fullscreen is requested on the container */
-#network-graph-container:fullscreen {
+#network-graph-container:fullscreen,
+#network-graph-container:-webkit-full-screen,
+#network-graph-container:-moz-full-screen,
+#network-graph-container:-ms-fullscreen {
+    width: 100vw !important;
+    height: 100vh !important;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
-#network-graph-container:fullscreen #network-graph {
+#network-graph-container:fullscreen #network-graph,
+#network-graph-container:-webkit-full-screen #network-graph,
+#network-graph-container:-moz-full-screen #network-graph,
+#network-graph-container:-ms-fullscreen #network-graph {
     /* 16:9 stage inside fullscreen */
     width: min(100vw, calc(100vh * 16 / 9)) !important;
     height: min(100vh, calc(100vw * 9 / 16)) !important;
@@ -415,8 +426,20 @@ html::before {
     border-radius: 0 !important;
 }
 
+/* ensure vis-network inner element stretches */
+#network-graph-container:fullscreen #network-graph .vis-network,
+#network-graph-container:-webkit-full-screen #network-graph .vis-network,
+#network-graph-container:-moz-full-screen #network-graph .vis-network,
+#network-graph-container:-ms-fullscreen #network-graph .vis-network {
+    width: 100% !important;
+    height: 100% !important;
+}
+
 /* When fullscreen is requested on the graph itself (fallback) */
-#network-graph:fullscreen {
+#network-graph:fullscreen,
+#network-graph:-webkit-full-screen,
+#network-graph:-moz-full-screen,
+#network-graph:-ms-fullscreen {
     background: #0f172a;
     display: flex;
     align-items: center;
@@ -425,6 +448,14 @@ html::before {
     height: 100vh !important;
     border: none !important;
     border-radius: 0 !important;
+}
+
+#network-graph:fullscreen .vis-network,
+#network-graph:-webkit-full-screen .vis-network,
+#network-graph:-moz-full-screen .vis-network,
+#network-graph:-ms-fullscreen .vis-network {
+    width: 100% !important;
+    height: 100% !important;
 }
     vertical-align: -2px;
     animation: btn-spin 0.9s linear infinite;
