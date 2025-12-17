@@ -16,7 +16,7 @@ from typing import Dict, Iterable, List, Optional
 
 from src.config import Config
 from src.chat_import.enums import ElementType
-from src.chat_import.schema import Conversation, Mention, Message, Participant
+from src.chat_import.schema import Conversation, Mention, Participant
 
 from .txt_process import HTTP_PATTERN, SYSTEM_QQ_NUMBERS, cut_words
 

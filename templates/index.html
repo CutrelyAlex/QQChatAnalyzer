@@ -57,7 +57,7 @@
                 <button class="tab-button" data-tab="preview">📋 聊天预览</button>
                 <button class="tab-button" data-tab="compare">🆚 对比</button>
                 <button class="tab-button" data-tab="ai-config">🤖 AI总结</button>
-                <button class="tab-button" data-tab="export">📊 导出报告(暂不支持)</button>
+                <button class="tab-button" data-tab="export">📊 导出报告</button>
             </div>
 
             <div class="tabs-content">
@@ -928,56 +928,33 @@
                 <div class="tab-pane" id="export-tab">
                     <div class="tab-header">
                         <h2>导出报告</h2>
-                        <p class="tab-description">将分析结果导出为HTML或PDF报告</p>
-
-                        <!-- 规划：导出子功能 Tab（暂为UI占位，不影响现有功能） -->
-                        <div class="subtabs" aria-label="导出子功能（规划）">
-                            <div class="subtab is-active">格式</div>
-                            <div class="subtab is-disabled">模板</div>
-                            <div class="subtab is-disabled">批量</div>
-                        </div>
+                        <p class="tab-description">导出「群聊年度总结（HTML）」：从已保存的群体分析缓存中选择 8 个热词，生成可下载的网页报告。</p>
                     </div>
+
                     <div class="tab-body">
-                        <div class="export-options">
-                            <div class="option-group">
-                                <label>报告格式:</label>
-                                <div class="radio-group">
-                                    <label class="radio-item">
-                                        <input type="radio" name="export-format" value="html" checked>
-                                        <span>HTML (网页)</span>
-                                    </label>
-                                    <label class="radio-item">
-                                        <input type="radio" name="export-format" value="pdf">
-                                        <span>PDF (文档)</span>
-                                    </label>
-                                </div>
+                        <div id="export-year-summary-config" class="chart-container" style="margin-bottom: 14px;">
+                            <h3 style="margin-top:0;">群聊年度总结（HTML）</h3>
+                            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
+                                <label for="export-group-cache" style="min-width: 120px;">群体分析缓存:</label>
+                                <select id="export-group-cache" class="select" style="min-width: 320px;"></select>
+                                <button id="export-year-refresh" class="btn btn-secondary" type="button">🔄 刷新缓存</button>
+                            </div>
+                            <div id="export-year-cache-meta" style="color:#666; font-size: 13px; margin-bottom: 10px;"></div>
+
+                            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom: 10px;">
+                                <div id="export-year-selected-count" style="color:#333; font-weight:600;">已选择 0 / 8</div>
+                                <button id="export-year-auto-pick" class="btn btn-secondary" type="button">✨ 自动选择前 8</button>
+                                <button id="export-year-clear" class="btn btn-secondary" type="button">🧹 清空选择</button>
                             </div>
 
-                            <div class="option-group">
-                                <label>包含内容:</label>
-                                <div class="checkbox-group">
-                                    <label class="checkbox-item">
-                                        <input type="checkbox" name="export-content" value="personal" checked>
-                                        <span>个人分析</span>
-                                    </label>
-                                    <label class="checkbox-item">
-                                        <input type="checkbox" name="export-content" value="group" checked>
-                                        <span>群体分析</span>
-                                    </label>
-                                    <label class="checkbox-item">
-                                        <input type="checkbox" name="export-content" value="network" checked>
-                                        <span>社交网络</span>
-                                    </label>
-                                    <label class="checkbox-item">
-                                        <input type="checkbox" name="export-content" value="ai-summary">
-                                        <span>AI总结</span>
-                                    </label>
-                                </div>
-                            </div>
+                            <div class="checkbox-group" id="export-year-hotwords" style="display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;"></div>
+                            <small style="display:block; color:#999; margin-top:10px; line-height:1.6;">
+                                提示：导出会在后端读取原聊天文件，自动为每个热词抓取 ≥5 条包含该词的例句（如不足则显示实际数量）。
+                            </small>
                         </div>
 
                         <div class="action-group">
-                            <button id="export-btn" class="btn btn-primary" disabled>📥 导出报告</button>
+                            <button id="export-btn" class="btn btn-primary" disabled>📥 导出年度总结（HTML）</button>
                         </div>
 
                         <div id="export-status" class="status-message"></div>

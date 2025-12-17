@@ -2,8 +2,7 @@
 群体分析模块 - 分析群聊的整体特征和数据
 """
 
-from collections import defaultdict, Counter
-from datetime import datetime
+from collections import defaultdict
 from typing import Dict, List, Any
 
 from src.chat_import.enums import ElementType

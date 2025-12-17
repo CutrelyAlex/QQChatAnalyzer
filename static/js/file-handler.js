@@ -391,7 +391,6 @@ function _renderExportYearHotwords() {
     }
 
     container.innerHTML = exportYearSummary.hotWords
-        .slice(0, 20)
         .map((it, idx) => {
             const word = (it?.word ?? '').toString();
             const count = Number(it?.count ?? 0);
@@ -529,7 +528,6 @@ async function _loadGroupCacheDetail(cacheId) {
 }
 
 function initExportTabEnhancements() {
-    // UI 已简化：默认就是年度总结
     _setExportYearSummaryVisible(true);
 
     document.getElementById('export-year-refresh')?.addEventListener('click', async () => {
@@ -623,7 +621,6 @@ async function exportReport() {
     }
 }
 
-// 初始化导出增强（不依赖 core.js 调用，避免改动面太大）
 document.addEventListener('DOMContentLoaded', () => {
     try {
         initExportTabEnhancements();
