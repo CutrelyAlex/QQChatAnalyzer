@@ -66,13 +66,13 @@ function renderHotWords(containerId, hotWords) {
     `;
     table.appendChild(thead);
     
-    // 表体 - 只显示前15个
+    // 表体 - 只显示前8个
     const tbody = document.createElement('tbody');
     tbody.className = 'hot-words-tbody';
-    tbody.dataset.displayLimit = 15;
-    tbody.dataset.currentLimit = 15;
+    tbody.dataset.displayLimit = 8;
+    tbody.dataset.currentLimit = 8;
     
-    const displayLimit = 15;
+    const displayLimit = 8;
     const initialWords = sortedWords.slice(0, displayLimit);
     
     initialWords.forEach((item, index) => {

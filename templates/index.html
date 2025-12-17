@@ -48,7 +48,7 @@
         </section>
 
         <!-- 主功能：左侧导航 + 右侧内容（保持原有 tab-button / tab-pane / id，不改变功能） -->
-        <div class="tabs-container layout-pro">
+        <div class="tabs-container layout-pro" id="main-tabs" style="display: none;">
             <div class="tabs-header" aria-label="主功能导航">
                 <div class="sidebar-title">主功能</div>
                 <button class="tab-button active" data-tab="personal">👤 个人分析</button>
@@ -288,7 +288,7 @@
                                     <section class="subtab-panel" data-scope="personal" data-subtab-panel="content" hidden>
                                         <div id="personal-content" style="display: none;">
                                             <div class="module-grid">
-                                                <div class="chart-container">
+                                                <div class="chart-container span-2">
                                                     <h3>🔥 个人热词榜</h3>
                                                     <div id="personal-hot-words" class="hot-words-container"></div>
                                                 </div>
@@ -565,9 +565,25 @@
                                 <button id="layout-tree-btn" class="btn btn-secondary" type="button" title="树状排布">树状排布(点击节点整理)</button>
                                 <button id="layout-smart-btn" class="btn btn-secondary" type="button" title="智能排布">散落排布</button>
 
+                                <button id="network-fullscreen-btn" class="btn btn-secondary" type="button" title="全屏查看网络图">⛶ 全屏</button>
+
                                 <div class="network-search" style="display: flex; gap: 8px; align-items: center; margin-left: auto;">
                                     <input id="network-node-search" class="network-search-input" type="text" placeholder="搜索昵称或QQ号..." autocomplete="off" />
                                     <button id="network-node-search-btn" class="btn btn-secondary" type="button" title="搜索并居中到对应节点">搜索居中</button>
+                                </div>
+
+                                <div class="network-export-actions" style="flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                                    <label for="network-export-scale" style="display: inline-flex; align-items: center; gap: 6px; color: #555;">
+                                        <span>导出倍数</span>
+                                        <select id="network-export-scale" class="select" style="min-width: 110px;">
+                                            <option value="32">32x</option>
+                                            <option value="64">64x</option>
+                                            <option value="128" selected>128x</option>
+                                            <option value="512">512x</option>
+                                            <option value="1024">1024x</option>
+                                        </select>
+                                    </label>
+                                    <button id="network-export-png-btn" class="btn btn-secondary" type="button" title="导出 PNG 图片（导出前会自动 fit 以展示全部节点）">🖼️ 导出PNG</button>
                                 </div>
                             </div>
 

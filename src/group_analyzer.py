@@ -139,7 +139,7 @@ class GroupStats:
             'media_messages': int(self.media_messages),
             'media_breakdown': self.media_breakdown or {},
             # 转换热词格式: [(word, count)] -> [{word, count}]
-            'hot_words': [{'word': w, 'count': c} for w, c in self.hot_words[:20]],
+            'hot_words': [{'word': w, 'count': c} for w, c in (self.hot_words or [])[:50]],
             'hot_emojis': [{'emoji': e, 'count': c} for e, c in self.hot_emojis[:10]],
             'heatmap': self.heatmap,
             # 新增时段分析

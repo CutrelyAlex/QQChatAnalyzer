@@ -220,7 +220,7 @@ class PersonalStats:
             'max_streak_days': self.max_streak_days,
 
             # 热词
-            'top_words': [{'word': w, 'count': c} for w, c in (self.top_words or [])[:20]],
+            'top_words': [{'word': w, 'count': c} for w, c in (self.top_words or [])[:50]],
         }
 
 

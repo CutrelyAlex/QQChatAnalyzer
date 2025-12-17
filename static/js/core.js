@@ -343,6 +343,23 @@ function updateAIPanel() {
     }
 }
 
+// ============ 主功能区显示控制 ============
+
+function setMainTabsVisible(visible) {
+    const el = document.getElementById('main-tabs');
+    if (!el) return;
+    el.style.display = visible ? 'flex' : 'none';
+}
+
+// 初始：未加载文件时隐藏主功能区
+document.addEventListener('DOMContentLoaded', () => {
+    try {
+        setMainTabsVisible(!!appState.currentFile);
+    } catch (e) {
+        // ignore
+    }
+});
+
 // ============ 工具函数 ============
 
 function showStatusMessage(type, message) {
@@ -359,8 +376,11 @@ function showStatusMessage(type, message) {
     statusDiv.className = `status-message ${type}`;
     // 确保曾被隐藏的状态条可以重新显示
     statusDiv.style.display = 'block';
-    
-    if (type !== 'error') {
+
+    const msg = (message ?? '').toString().trim();
+    const keepInfo = type === 'info' && msg.startsWith('⏳');
+
+    if (type !== 'error' && !keepInfo) {
         setTimeout(() => {
             statusDiv.className = 'status-message';
             statusDiv.style.display = 'none';

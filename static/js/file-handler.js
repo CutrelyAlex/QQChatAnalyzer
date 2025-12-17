@@ -34,6 +34,7 @@ async function loadFileList() {
 async function loadFile() {
     const fileSelect = document.getElementById('file-select');
     const filename = fileSelect.value;
+    const loadBtn = document.getElementById('load-btn');
     
     if (!filename) {
         showStatusMessage('error', '请先选择文件');
@@ -41,6 +42,16 @@ async function loadFile() {
     }
     
     try {
+        // 加载中：隐藏主功能区，避免用户误操作
+        if (typeof setMainTabsVisible === 'function') {
+            setMainTabsVisible(false);
+        }
+        if (loadBtn) {
+            loadBtn.disabled = true;
+            loadBtn.classList.add('is-loading');
+        }
+        showStatusMessage('info', '⏳ 正在加载文件，请稍候...');
+
         const response = await fetch(`${API_BASE}/load`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -61,7 +72,11 @@ async function loadFile() {
         document.getElementById('personal-analyze-btn').disabled = false;
         document.getElementById('group-analyze-btn').disabled = false;
         document.getElementById('network-analyze-btn').disabled = false;
-        document.getElementById('export-btn').disabled = false;
+
+        // 文件加载完成后显示主功能区
+        if (typeof setMainTabsVisible === 'function') {
+            setMainTabsVisible(true);
+        }
         
         // 启用生成按钮
         updateAIPanel();
@@ -81,6 +96,11 @@ async function loadFile() {
     } catch (error) {
         console.error('加载文件失败:', error);
         showStatusMessage('error', '加载文件失败');
+    } finally {
+        if (loadBtn) {
+            loadBtn.disabled = false;
+            loadBtn.classList.remove('is-loading');
+        }
     }
 }
 
@@ -443,6 +463,36 @@ function _updateExportButtonState() {
     btn.title = ok ? '' : '请选择群体分析缓存并勾选 8 个热词';
 }
 
+function _setExportBusy(isBusy, message) {
+    const btn = document.getElementById('export-btn');
+    const status = document.getElementById('export-status');
+
+    if (btn) {
+        if (!btn.dataset.defaultText) {
+            btn.dataset.defaultText = (btn.textContent || '').toString();
+        }
+
+        if (isBusy) {
+            btn.disabled = true;
+            btn.classList.add('is-loading');
+            btn.textContent = '⏳ 正在导出...';
+            btn.title = '正在导出，请稍候...';
+        } else {
+            btn.classList.remove('is-loading');
+            btn.textContent = btn.dataset.defaultText || '📥 导出年度总结（HTML）';
+            // 恢复基于选择条件的可用状态
+            _updateExportButtonState();
+        }
+    }
+
+    if (status) {
+        const msg = (message || '').toString();
+        status.textContent = msg;
+        status.className = 'status-message' + (isBusy ? ' info' : '');
+        status.style.display = msg ? 'block' : 'none';
+    }
+}
+
 async function _loadGroupCacheList() {
     const sel = document.getElementById('export-group-cache');
     if (!sel) return;
@@ -556,6 +606,10 @@ function initExportTabEnhancements() {
         _updateExportButtonState();
     });
 
+    document.getElementById('export-btn')?.addEventListener('click', async () => {
+        await exportReport();
+    });
+
     // init
     _loadGroupCacheList();
     _renderExportYearHotwords();
@@ -575,6 +629,7 @@ async function exportReport() {
     }
 
     try {
+        _setExportBusy(true, '⏳ 正在导出年度总结（HTML），请稍候...');
         const response = await fetch(`${API_BASE}/export/html`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -589,11 +644,13 @@ async function exportReport() {
         if (contentType.includes('application/json')) {
             const data = await response.json();
             showStatusMessage('error', data.error || data.message || '导出失败');
+            _setExportBusy(false, data.error || data.message || '导出失败');
             return;
         }
 
         if (!response.ok) {
             showStatusMessage('error', `导出失败（HTTP ${response.status}）`);
+            _setExportBusy(false, `导出失败（HTTP ${response.status}）`);
             return;
         }
 
@@ -615,9 +672,15 @@ async function exportReport() {
         window.URL.revokeObjectURL(url);
 
         showStatusMessage('success', '年度总结已导出（HTML）');
+        _setExportBusy(false, '✅ 已导出（HTML），如未弹出下载请检查浏览器下载设置/拦截。');
     } catch (error) {
         console.error('导出失败:', error);
         showStatusMessage('error', '导出失败');
+        _setExportBusy(false, '❌ 导出失败：网络或服务异常（请重试，或查看控制台/Network 详情）');
+    } finally {
+        // 如果中途 return 已恢复状态，这里不会影响；否则确保按钮不一直处于 busy
+        // 注意：_setExportBusy(false) 会按当前选择恢复按钮是否可用
+        _setExportBusy(false, document.getElementById('export-status')?.textContent || '');
     }
 }
 

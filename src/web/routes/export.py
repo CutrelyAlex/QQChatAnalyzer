@@ -13,6 +13,7 @@ import pickle
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import quote
 
 from flask import jsonify, make_response, render_template, request
 
@@ -243,8 +244,13 @@ def export_report(format_type: str):
 
 		resp = make_response(html)
 		resp.headers['Content-Type'] = 'text/html; charset=utf-8'
-		dl_name = f"群聊年度总结_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
-		resp.headers['Content-Disposition'] = f"attachment; filename*=UTF-8''{dl_name}"
+		ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+		ascii_name = f"group_year_summary_{ts}.html"
+		utf8_name = f"群聊年度总结_{ts}.html"
+		# WSGI 头必须是 latin-1 可编码字符串；因此提供 ASCII filename，同时用 RFC5987 的 filename* 提供 UTF-8 百分号编码。
+		resp.headers['Content-Disposition'] = (
+			f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(utf8_name)}'
+		)
 		return resp
 
 	except Exception as e:

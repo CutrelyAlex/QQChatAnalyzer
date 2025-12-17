@@ -688,6 +688,10 @@ function initNetworkLayoutButtons() {
     const btnTree = document.getElementById('layout-tree-btn');
     const btnSmart = document.getElementById('layout-smart-btn');
 
+    const btnFullscreen = document.getElementById('network-fullscreen-btn');
+    const btnExportPng = document.getElementById('network-export-png-btn');
+    const exportScaleSelect = document.getElementById('network-export-scale');
+
     const searchInput = document.getElementById('network-node-search');
     const searchBtn = document.getElementById('network-node-search-btn');
 
@@ -699,6 +703,157 @@ function initNetworkLayoutButtons() {
             return false;
         }
         return true;
+    };
+
+    const getNetworkCanvas = () => {
+        const network = window.currentNetwork;
+        const c = network?.canvas?.frame?.canvas;
+        if (c && c.toDataURL) return c;
+
+        // 兜底：直接从 DOM 找 canvas
+        const domCanvas = document.querySelector('#network-graph canvas');
+        if (domCanvas && domCanvas.toDataURL) return domCanvas;
+        return null;
+    };
+
+    const downloadDataUrl = (dataUrl, filename) => {
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+    };
+
+    const formatTs = () => {
+        const d = new Date();
+        const pad = (n) => n.toString().padStart(2, '0');
+        return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+    };
+
+    const updateFullscreenButtonText = () => {
+        if (!btnFullscreen) return;
+        const on = !!document.fullscreenElement;
+        btnFullscreen.textContent = on ? '⛶ 退出全屏' : '⛶ 全屏';
+    };
+
+    const toggleFullscreen = async () => {
+        if (!requireNetwork()) return;
+
+        const target = document.getElementById('network-graph-container') || document.getElementById('network-graph');
+        if (!target) {
+            showStatusMessage('error', '网络图容器未找到');
+            return;
+        }
+
+        try {
+            if (!document.fullscreenElement) {
+                await target.requestFullscreen();
+            } else {
+                await document.exitFullscreen();
+            }
+        } catch (e) {
+            console.warn('toggleFullscreen failed:', e);
+            showStatusMessage('error', '全屏失败：浏览器不支持或被阻止');
+        }
+    };
+
+    const exportNetworkPng = async () => {
+        if (!requireNetwork()) return;
+
+        const network = window.currentNetwork;
+
+        const canvas = getNetworkCanvas();
+        if (!canvas) {
+            showStatusMessage('error', '未找到网络图画布（请先生成网络图）');
+            return;
+        }
+
+        let scale = 128;
+        try {
+            const v = parseFloat(exportScaleSelect?.value || '128');
+            if (isFinite(v) && v > 0) scale = v;
+        } catch (_) {
+            // ignore
+        }
+
+        // 用户请求的倍率非常大，这里做安全保护：
+        // 以“当前画布分辨率 * scale”会迅速爆内存，所以我们限制最大输出像素。
+        const MAX_OUTPUT_PIXELS = 80_000_000; // ~80MP (RGBA约 320MB 内存峰值)
+
+        // 导出前：先 fit，确保“整个画面的节点”都在视野内
+        let prev = null;
+        try {
+            prev = {
+                scale: typeof network.getScale === 'function' ? network.getScale() : null,
+                position: typeof network.getViewPosition === 'function' ? network.getViewPosition() : null
+            };
+        } catch (_) {
+            prev = null;
+        }
+
+        try {
+            showStatusMessage('info', '⏳ 正在 fit 并导出 PNG（会自动包含全部节点）...');
+
+            try {
+                network.fit({
+                    animation: false,
+                    padding: 80,
+                    maxZoom: 1.2
+                });
+            } catch (_) {
+                // ignore
+            }
+
+            // 等待一帧，确保 redraw 完成
+            await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 30)));
+
+            // 再取一次画布（fit 后可能变更）
+            const c = getNetworkCanvas() || canvas;
+
+            const outW = Math.max(1, Math.floor(c.width * scale));
+            const outH = Math.max(1, Math.floor(c.height * scale));
+            const outPixels = outW * outH;
+
+            if (outPixels > MAX_OUTPUT_PIXELS) {
+                const approxMp = (outPixels / 1_000_000).toFixed(1);
+                const maxMp = (MAX_OUTPUT_PIXELS / 1_000_000).toFixed(0);
+                showStatusMessage('error', `导出倍率过大：约 ${approxMp}MP，超过安全上限 ${maxMp}MP。建议先全屏再导出，或降低倍率。`);
+                return;
+            }
+
+            const out = document.createElement('canvas');
+            out.width = outW;
+            out.height = outH;
+            const ctx = out.getContext('2d');
+            if (!ctx) {
+                showStatusMessage('error', '导出失败：无法获取画布上下文');
+                return;
+            }
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(c, 0, 0, out.width, out.height);
+
+            const dataUrl = out.toDataURL('image/png');
+            downloadDataUrl(dataUrl, `network_graph_${formatTs()}_${scale}x.png`);
+            showStatusMessage('success', `✅ 已导出 PNG（${scale}x，已包含全部节点）`);
+        } catch (e) {
+            console.error('exportNetworkPng failed:', e);
+            showStatusMessage('error', '导出失败：' + (e?.message || e));
+        } finally {
+            // 导出后：恢复用户视角
+            try {
+                if (prev && prev.position && typeof network.moveTo === 'function') {
+                    network.moveTo({
+                        position: prev.position,
+                        scale: prev.scale ?? undefined,
+                        animation: { duration: 250, easingFunction: 'easeInOutQuad' }
+                    });
+                }
+            } catch (_) {
+                // ignore
+            }
+        }
     };
 
     const normalize = (s) => (s ?? '').toString().trim().toLowerCase();
@@ -1056,6 +1211,30 @@ function initNetworkLayoutButtons() {
     if (btnCircle) btnCircle.addEventListener('click', applyCircularLayout);
     if (btnTree) btnTree.addEventListener('click', applyTreeLayout);
     if (btnSmart) btnSmart.addEventListener('click', applySmartLayout);
+
+    if (btnFullscreen) {
+        btnFullscreen.addEventListener('click', toggleFullscreen);
+        updateFullscreenButtonText();
+
+        // fullscreenchange 由用户按 ESC 退出时也会触发
+        document.addEventListener('fullscreenchange', () => {
+            updateFullscreenButtonText();
+            try {
+                // 全屏进/出后，容器尺寸变化，需要 redraw/fit
+                const network = window.currentNetwork;
+                if (network && typeof network.redraw === 'function') {
+                    setTimeout(() => {
+                        try { network.redraw(); } catch (_) { /* ignore */ }
+                        try { network.fit({ animation: { duration: 220, easingFunction: 'easeInOutQuad' } }); } catch (_) { /* ignore */ }
+                    }, 50);
+                }
+            } catch (_) {
+                // ignore
+            }
+        });
+    }
+
+    if (btnExportPng) btnExportPng.addEventListener('click', () => { exportNetworkPng(); });
 
     if (searchBtn) searchBtn.addEventListener('click', handleSearch);
     if (searchInput) {

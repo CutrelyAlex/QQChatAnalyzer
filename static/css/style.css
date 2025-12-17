@@ -347,6 +347,15 @@ html::before {
     text-shadow: 0 0 5px rgba(255, 255, 0, 0.3);
 }
 
+.status-message.info {
+    display: block;
+    background-color: rgba(0, 255, 255, 0.08);
+    color: var(--accent-cyan);
+    border: 1px solid rgba(0, 255, 255, 0.35);
+    box-shadow: 0 0 10px rgba(0, 255, 255, 0.15);
+    text-shadow: 0 0 5px rgba(0, 255, 255, 0.25);
+}
+
 /* ======================================
    按钮样式
    ====================================== */
@@ -365,6 +374,64 @@ html::before {
     font-family: 'SimHei', monospace;
     letter-spacing: 1px;
     text-transform: uppercase;
+}
+
+.btn.is-loading {
+    position: relative;
+}
+
+.btn.is-loading::after {
+    content: '';
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin-left: 10px;
+    border: 2px solid rgba(0, 255, 255, 0.35);
+    border-top-color: rgba(0, 255, 255, 0.95);
+    border-radius: 50%;
+
+/* =========================
+   Network graph fullscreen
+   ========================= */
+
+/* Fullscreen is applied to the element itself; inline styles on #network-graph need !important overrides. */
+#network-graph-container:fullscreen {
+    background: #0f172a;
+    padding: 0;
+}
+
+/* When fullscreen is requested on the container */
+#network-graph-container:fullscreen {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#network-graph-container:fullscreen #network-graph {
+    /* 16:9 stage inside fullscreen */
+    width: min(100vw, calc(100vh * 16 / 9)) !important;
+    height: min(100vh, calc(100vw * 9 / 16)) !important;
+    border: none !important;
+    border-radius: 0 !important;
+}
+
+/* When fullscreen is requested on the graph itself (fallback) */
+#network-graph:fullscreen {
+    background: #0f172a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100vw !important;
+    height: 100vh !important;
+    border: none !important;
+    border-radius: 0 !important;
+}
+    vertical-align: -2px;
+    animation: btn-spin 0.9s linear infinite;
+}
+
+@keyframes btn-spin {
+    to { transform: rotate(360deg); }
 }
 
 .btn:disabled {
