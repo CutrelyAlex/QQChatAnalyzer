@@ -396,126 +396,6 @@ class AISummarizer:
                 lines.append(f"[{time_str}] {sender}: {content}")
         return '\n'.join(lines)
     
-    def generate_personal_summary(self, stats: Dict[str, Any], 
-                                   chat_sample: str = "",
-                                   messages: List[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """
-        T051: 生成个人总结 - 创意风格的年度报告
-        
-        Args:
-            stats: PersonalStats.to_dict() 的结果
-            chat_sample: 可选的聊天记录样本（兼容旧接口）
-            messages: 完整的消息列表（推荐，会自动进行智能稀疏采样）
-        
-        Returns:
-            {'success': bool, 'summary': str, 'error': str}
-        """
-        if not self.is_available():
-            return {
-                'success': False,
-                'summary': '',
-                'error': 'AI服务未配置，请设置 OPENAI_API_KEY 环境变量'
-            }
-        
-        # 如果提供了完整消息列表，使用智能稀疏采样
-        if messages:
-            target_qq = stats.get('qq', '')
-            chat_sample = self._sparse_sample_messages(messages, target_qq)
-        
-        prompt = self._build_personal_prompt(stats, chat_sample)
-        
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": self._get_system_prompt('personal')},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=self.max_tokens,
-                temperature=self.temperature, 
-                top_p=self.top_p
-            )
-            
-            summary = response.choices[0].message.content
-            
-            return {
-                'success': True,
-                'summary': summary,
-                'tokens_used': response.usage.total_tokens if response.usage else 0,
-                'model': self.model,
-                'temperature': self.temperature,
-                'top_p': self.top_p
-            }
-        except Exception as e:
-            logger.error(f"Personal summary generation failed: {e}")
-            return {
-                'success': False,
-                'summary': '',
-                'error': str(e)
-            }
-    
-    def generate_group_summary(self, group_stats: Dict[str, Any],
-                                chat_sample: str = "",
-                                messages: List[Dict[str, Any]] = None,
-                                network_stats: Dict[str, Any] = None) -> Dict[str, Any]:
-        """
-        T057: 生成群体和社交网络融合总结
-        
-        合并群体分析和网络分析，生成一份综合的社交分析报告
-        
-        Args:
-            group_stats: GroupStats.to_dict() 的结果
-            chat_sample: 可选的聊天记录样本（兼容旧接口）
-            messages: 完整的消息列表（推荐，会自动进行智能稀疏采样）
-            network_stats: NetworkStats.to_dict() 的结果（可选）
-        
-        Returns:
-            {'success': bool, 'summary': str, 'error': str}
-        """
-        if not self.is_available():
-            return {
-                'success': False,
-                'summary': '',
-                'error': 'AI服务未配置，请设置 OPENAI_API_KEY 环境变量'
-            }
-        
-        # 如果提供了完整消息列表，使用智能稀疏采样
-        if messages:
-            chat_sample = self._sparse_sample_messages(messages)
-        
-        prompt = self._build_group_and_network_prompt(group_stats, network_stats, chat_sample)
-        
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": self._get_system_prompt('group_and_network')},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=self.max_tokens,
-                temperature=self.temperature,
-                top_p=self.top_p
-            )
-            
-            summary = response.choices[0].message.content
-            
-            return {
-                'success': True,
-                'summary': summary,
-                'tokens_used': response.usage.total_tokens if response.usage else 0,
-                'model': self.model,
-                'temperature': self.temperature,
-                'top_p': self.top_p
-            }
-        except Exception as e:
-            logger.error(f"Group and network summary generation failed: {e}")
-            return {
-                'success': False,
-                'summary': '',
-                'error': str(e)
-            }
-
-
     def build_prompts(
         self,
         *,
@@ -815,8 +695,8 @@ class AISummarizer:
         if network_stats:
             total_nodes = network_stats.get('total_nodes', 0)
             total_edges = network_stats.get('total_edges', 0)
-            density = network_stats.get('density', 0)
-            avg_clustering = network_stats.get('avg_clustering_coefficient', 0)
+            density = network_stats.get('network_density', network_stats.get('density', 0))
+            avg_clustering = network_stats.get('average_clustering', network_stats.get('avg_clustering_coefficient', 0))
             communities = network_stats.get('communities', [])
             most_popular = network_stats.get('most_popular_user', {})
             most_active_pair = network_stats.get('most_active_pair', {})
@@ -830,9 +710,9 @@ class AISummarizer:
             # 最佳CP
             pair_info = "无"
             if most_active_pair:
-                pair = most_active_pair.get('pair', [])
-                if len(pair) >= 2:
-                    pair_info = f"{pair[0]} ↔ {pair[1]} (互动{most_active_pair.get('weight', 0):.0f}次)"
+                name1 = most_active_pair.get('name1') or (most_active_pair.get('pair', ['?', '?'])[0])
+                name2 = most_active_pair.get('name2') or (most_active_pair.get('pair', ['?', '?'])[1])
+                pair_info = f"{name1} ↔ {name2} (互动{most_active_pair.get('weight', 0):.1f})"
             
             # 关键连接者
             connectors_info = []
@@ -854,7 +734,7 @@ class AISummarizer:
 {popular_info}
 ### 可能的互动最多的组合
 {pair_info}
-### 看能的关键连接者
+### 可能的关键连接者
 {', '.join(connectors_info) if connectors_info else '暂无明显桥梁人物'}
 ### 聚类分析
 {community_info}

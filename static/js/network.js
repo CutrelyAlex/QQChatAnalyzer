@@ -4,7 +4,6 @@
  */
 
 // ============ 全局变量 ============
-let originalNetworkData = { nodes: [], edges: [] }; // 存储原始数据
 let currentNetworkLimits = { maxNodes: 100, maxEdges: 300 }; // 当前限制
 
 // 布局/交互需要访问当前网络实例
@@ -19,11 +18,6 @@ function renderNetworkGraph(nodes, edges) {
     
     if (!container) return;
     
-    originalNetworkData = {
-        nodes: JSON.parse(JSON.stringify(nodes)),
-        edges: JSON.parse(JSON.stringify(edges))
-    };
-
     // 当前交互模式：none | node | edge
     let focusMode = 'none';
     let focusedEdgeId = null;

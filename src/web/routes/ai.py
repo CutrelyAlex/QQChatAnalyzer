@@ -63,7 +63,7 @@ def token_estimate():
     try:
         data = request.get_json()
         filename = data.get('filename')
-        max_tokens = data.get('max_tokens', Config.DEFAULT_MAX_TOKENS)
+        max_tokens = data.get('max_tokens', Config.DEFAULT_CONTEXT_BUDGET)
 
         if not filename:
             return jsonify({'success': False, 'error': '未指定文件'}), 400
