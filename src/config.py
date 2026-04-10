@@ -20,7 +20,7 @@ class Config:
     # AI配置 - OpenAI兼容API
     OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
     OPENAI_API_BASE = os.getenv('OPENAI_API_BASE', 'https://api.openai.com/v1')
-    OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-3.5-turbo')
+    OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
     OPENAI_REQUEST_TIMEOUT = int(os.getenv('OPENAI_REQUEST_TIMEOUT', 30))
     
     # 数据处理配置
