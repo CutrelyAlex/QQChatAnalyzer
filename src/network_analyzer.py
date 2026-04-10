@@ -5,7 +5,7 @@
 TODO: 高分辨率图片保存、全屏化网络图。
 """
 
-from collections import defaultdict
+from collections import defaultdict, deque
 from datetime import datetime
 from itertools import combinations
 from typing import Any, Dict, List, Optional, Tuple
@@ -43,6 +43,7 @@ class NetworkStats:
         self.average_clustering = 0.0
         self.network_density = 0.0
         self.average_path_length = 0.0
+        self.key_connectors = []
 
         # 社区检测
         self.communities = []  # 社区分组
@@ -62,8 +63,11 @@ class NetworkStats:
             'interaction_matrix': self.interaction_matrix,
             'average_clustering': round(self.average_clustering, 3),
             'network_density': round(self.network_density, 3),
+            'density': round(self.network_density, 3),
             'average_path_length': round(self.average_path_length, 3),
-            'communities': self.communities
+            'avg_clustering_coefficient': round(self.average_clustering, 3),
+            'communities': self.communities,
+            'key_connectors': self.key_connectors,
         }
 
 
@@ -579,10 +583,10 @@ class NetworkAnalyzer:
             sigma[s] = 1
             d = {v: -1 for v in nodes}  # 距离
             d[s] = 0
-            Q = [s]  # 队列
+            Q = deque([s])  # 队列
             
             while Q:
-                v = Q.pop(0)
+                v = Q.popleft()
                 S.append(v)
                 for w in adj_list[v]:
                     # w 首次被发现
@@ -616,10 +620,10 @@ class NetworkAnalyzer:
             # BFS 计算最短路径
             distances = {v: float('inf') for v in nodes}
             distances[node] = 0
-            Q = [node]
+            Q = deque([node])
             
             while Q:
-                v = Q.pop(0)
+                v = Q.popleft()
                 for w in adj_list[v]:
                     if distances[w] == float('inf'):
                         distances[w] = distances[v] + 1
@@ -633,6 +637,24 @@ class NetworkAnalyzer:
                 closeness[node] = 0.0
         
         self.stats.closeness_centrality = closeness
+
+        connector_candidates = sorted(
+            (
+                {
+                    'qq': node,
+                    'name': self.qq_to_name.get(node, node),
+                    'betweenness': self.stats.betweenness_centrality.get(node, 0),
+                    'degree': self.stats.degree_centrality.get(node, 0),
+                }
+                for node in nodes
+            ),
+            key=lambda item: (item['betweenness'], item['degree']),
+            reverse=True,
+        )
+        self.stats.key_connectors = [
+            item for item in connector_candidates
+            if item['betweenness'] > 0
+        ][:3]
 
         # 更新节点大小（使用度中心度）
         for node in self.stats.nodes:
@@ -782,10 +804,10 @@ class NetworkAnalyzer:
         for source in nodes:
             distances = {v: float('inf') for v in nodes}
             distances[source] = 0
-            Q = [source]
+            Q = deque([source])
             
             while Q:
-                v = Q.pop(0)
+                v = Q.popleft()
                 for w in adj_list[v]:
                     if distances[w] == float('inf'):
                         distances[w] = distances[v] + 1

@@ -102,11 +102,15 @@ def build_snapshot(
 
 	net_compact = None
 	if network_stats:
+		network_density = _safe_float(network_stats.get("network_density", network_stats.get("density")))
+		average_clustering = _safe_float(
+			network_stats.get("average_clustering", network_stats.get("avg_clustering_coefficient"))
+		)
 		net_compact = {
 			"total_nodes": _safe_int(network_stats.get("total_nodes")),
 			"total_edges": _safe_int(network_stats.get("total_edges")),
-			"density": _safe_float(network_stats.get("density")),
-			"average_clustering": _safe_float(network_stats.get("average_clustering")),
+			"network_density": network_density,
+			"average_clustering": average_clustering,
 		}
 
 	return CompareSnapshot(filename=filename, conversation=conv_dict, group=group_compact, network=net_compact)
@@ -135,7 +139,7 @@ def diff_snapshots(left: CompareSnapshot, right: CompareSnapshot) -> Dict[str, A
 			{
 				"total_nodes": (l["network"].get("total_nodes"), r["network"].get("total_nodes")),
 				"total_edges": (l["network"].get("total_edges"), r["network"].get("total_edges")),
-				"density": (l["network"].get("density"), r["network"].get("density")),
+				"network_density": (l["network"].get("network_density"), r["network"].get("network_density")),
 				"average_clustering": (l["network"].get("average_clustering"), r["network"].get("average_clustering")),
 			}
 		)

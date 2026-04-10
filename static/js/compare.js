@@ -96,7 +96,7 @@ function renderSnapshotSummary(containerId, snapshot) {
     if (net && Object.keys(net).length > 0) {
         rows.push(['网络节点数', net.total_nodes ?? '-']);
         rows.push(['网络边数', net.total_edges ?? '-']);
-        rows.push(['网络密度', (typeof net.density === 'number') ? net.density.toFixed(4) : (net.density ?? '-')]);
+        rows.push(['网络密度', (typeof net.network_density === 'number') ? net.network_density.toFixed(4) : (net.network_density ?? '-')]);
         rows.push(['平均聚类系数', (typeof net.average_clustering === 'number') ? net.average_clustering.toFixed(4) : (net.average_clustering ?? '-')]);
     }
 
@@ -214,7 +214,7 @@ async function runCompare() {
             media_messages: '含媒体/附件',
             total_nodes: '网络节点数',
             total_edges: '网络边数',
-            density: '网络密度',
+            network_density: '网络密度',
             average_clustering: '平均聚类系数'
         };
 
