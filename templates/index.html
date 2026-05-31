@@ -7,9 +7,9 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style-pro-readable.css') }}">
     <!-- Chart.js用于绘制图表 -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <script src="{{ url_for('static', filename='vendor/chart.umd.js') }}"></script>
     <!-- vis.js用于社交网络可视化 -->
-    <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.2/dist/vis-network.min.js"></script>
+    <script src="{{ url_for('static', filename='vendor/vis-network.min.js') }}"></script>
 </head>
 <body>
     <div class="container">
@@ -1033,6 +1033,8 @@
     <script src="{{ url_for('static', filename='js/core.js') }}"></script>
     <script src="{{ url_for('static', filename='js/analysis-cache.js') }}"></script>
     <script src="{{ url_for('static', filename='js/file-handler.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/preview.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/export.js') }}"></script>
     <script src="{{ url_for('static', filename='js/analyzer.js') }}"></script>
     <script src="{{ url_for('static', filename='js/compare.js') }}"></script>
     <script src="{{ url_for('static', filename='js/ai-summary.js') }}"></script>
